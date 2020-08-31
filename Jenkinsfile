@@ -12,256 +12,7 @@
 
 // To use a test branch (i.e. PR) until it lands to master
 // I.e. for testing library changes
-//@Library(value="pipeline-lib@your_branch") _
-
-boolean doc_only_change() {
-    if (cachedCommitPragma(pragma: 'Doc-only') == 'true') {
-        return true
-    }
-    if (cachedCommitPragma(pragma: 'Doc-only') == 'false') {
-        return false
-    }
-
-    def rc = sh label: "Determine if doc-only change",
-                script: "CHANGE_ID=${env.CHANGE_ID} " +
-                        "TARGET_BRANCH=${target_branch} " +
-                        'ci/doc_only_change.sh',
-                returnStatus: true
-    return rc == 1
-}
-
-boolean release_candidate() {
-    return !sh(label: "Determine if building (a PR of) an RC",
-              script: "git diff-index --name-only HEAD^ | grep -q TAG && " +
-                      "grep -i '[0-9]rc[0-9]' TAG",
-              returnStatus: true)
-}
-
-def scons_faults_args() {
-    // The default build will have BUILD_TYPE=dev; fault injection enabled
-    if ((cachedCommitPragma(pragma: 'faults-enabled', def_val: 'true') == 'true') && !release_candidate()) {
-        return "BUILD_TYPE=dev"
-    } else {
-        return "BUILD_TYPE=release"
-    }
-}
-
-def skip_stage(String stage, boolean def_val = false) {
-    String value = 'false'
-    if (def_val) {
-        value = 'true'
-    }
-    return cachedCommitPragma(pragma: 'Skip-' + stage,
-                              def_val: value) == 'true'
-}
-
-boolean quickbuild() {
-    return cachedCommitPragma(pragma: 'Quick-build') == 'true' ||
-           quick_functional()
-}
-
-def functional_post_always() {
-   return sh(label: "Job Cleanup",
-             script: 'ci/functional/job_cleanup.sh',
-             returnStatus: true)
-}
-
-String get_daos_packages() {
-    return get_daos_packages(parseStageInfo()['target'])
-}
-
-String get_daos_packages(String distro) {
-    String pkgs
-    if (env.TEST_RPMS == 'true') {
-        pkgs = "daos{,-{client,tests,server}}"
-    } else {
-        pkgs = "daos{,-client}"
-    }
-    if (distro.startsWith('ubuntu20')) {
-        return pkgs + "=" + daos_packages_version(distro)
-    }
-    return pkgs + "-" + daos_packages_version(distro)
-}
-
-String pr_repos() {
-    return pr_repos(parseStageInfo()['target'])
-}
-
-String pr_repos(String distro) {
-    String repos = ""
-    if (distro.startsWith('el7') || distro.startsWith('centos7')) {
-        repos = cachedCommitPragma(pragma: 'PR-repos-el7')
-    } else if (distro.startsWith('leap15')) {
-        repos = cachedCommitPragma(pragma: 'PR-repos-leap15')
-    } else if (distro.startsWith('ubuntu20')) {
-        repos = cachedCommitPragma(pragma: 'PR-repos-ubuntu20', cache: commit_pragma_cache)
-    } else {
-       error 'pr_repos not implemented for ' + distro
-    }
-    return repos + ' ' + cachedCommitPragma(pragma: 'PR-repos')
-}
-
-String daos_repo() {
-    if (cachedCommitPragma(pragma: 'RPM-test-version') == '') {
-        return "daos@${env.BRANCH_NAME}:${env.BUILD_NUMBER}"
-    } else {
-        return ""
-    }
-}
-
-String hw_distro_target() {
-    if (env.STAGE_NAME.contains('Hardware')) {
-        if (env.STAGE_NAME.contains('Small')) {
-            return hw_distro('small')
-        }
-        if (env.STAGE_NAME.contains('Medium')) {
-            return hw_distro('medium')
-        }
-        if (env.STAGE_NAME.contains('Large')) {
-            return hw_distro('large')
-        }
-    }
-    return parseStageInfo()['target']
-}
-
-String daos_repos() {
-    String target = hw_distro_target()
-    return daos_repos(target)
-}
-
-String daos_repos(String distro) {
-    return pr_repos(distro) + ' ' + daos_repo()
-}
-
-String unit_packages() {
-    Map stage_info = parseStageInfo()
-    boolean need_qb = quickbuild()
-    if (env.STAGE_NAME.contains('Bullseye')) {
-        need_qb = true
-    }
-    if (stage_info['target'].startsWith('el7') ||
-        stage_info['target'].startsWith('centos7')) {
-        String packages =  'gotestsum openmpi3 ' +
-                           'hwloc-devel argobots ' +
-                           'fuse3-libs fuse3 ' +
-                           'boost-python36-devel ' +
-                           'libisa-l-devel libpmem ' +
-                           'libpmemobj protobuf-c ' +
-                           'spdk-devel libfabric-devel ' +
-                           'pmix numactl-devel ' +
-                           'libipmctl-devel python36-pyxattr ' +
-                           'python36-tabulate numactl ' +
-                           'libyaml-devel ' +
-                           'valgrind-devel patchelf'
-        if (need_qb) {
-            unstash stage_info['target'] + '-required-mercury-rpm-version'
-            packages += " spdk-tools mercury-" +
-                        readFile(stage_info['target'] +
-                                 '-required-mercury-rpm-version').trim() +
-                        " libisa-l_crypto libfabric-debuginfo" +
-                        " argobots-debuginfo protobuf-c-debuginfo"
-        }
-        return packages
-    } else {
-        error 'unit packages not implemented for ' + stage_info['target']
-    }
-}
-
-commit_pragma_cache = [:]
-def cachedCommitPragma(Map config) {
-
-    if (commit_pragma_cache[config['pragma']]) {
-        return commit_pragma_cache[config['pragma']]
-    }
-
-    commit_pragma_cache[config['pragma']] = commitPragma(config)
-
-    return commit_pragma_cache[config['pragma']]
-
-}
-
-String daos_packages_version() {
-    return daos_packages_version(parseStageInfo()['target'])
-}
-
-String daos_packages_version(String distro) {
-    // commit pragma has highest priority
-    // TODO: this should actually be determined from the PR-repos artifacts
-    String version = cachedCommitPragma(pragma: 'RPM-test-version')
-    if (version != "") {
-        String dist = ""
-        if (version.indexOf('-') > -1) {
-            // only tack on the %{dist} if the release was specified
-            if (distro.startsWith('el7') || distro.startsWith('centos7')) {
-                dist = ".el7"
-            } else if (distro.startsWith('leap15')) {
-                dist = ".suse.lp152"
-            }
-        }
-        return version + dist
-    }
-
-    // use the stash after that
-    unstash distro + '-rpm-version'
-    version = readFile(distro + '-rpm-version').trim()
-    if (version != "") {
-        return version
-    }
-
-    error "Don't know how to determine package version for " + distro
-}
-
-boolean parallel_build() {
-    // defaults to false
-    // true if Quick-build: true unless Parallel-build: false
-    def pb = cachedCommitPragma(pragma: 'Parallel-build')
-    if (pb == "true" ||
-        (quickbuild() && pb != "false")) {
-        return true
-    }
-
-    return false
-}
-
-String hw_distro(String size) {
-    // Possible values:
-    //'leap15
-    //'centos7
-    return cachedCommitPragma(pragma: 'Func-hw-test-' + size + '-distro',
-                              def_val: cachedCommitPragma(pragma: 'Func-hw-test-distro',
-                                                          def_val: 'centos7'))
-}
-
-String functional_packages() {
-    String target = hw_distro_target()
-    return functional_packages(target)
-}
-
-String functional_packages(String distro) {
-    String daos_pkgs = get_daos_packages(distro)
-    String pkgs = " openmpi3 hwloc ndctl fio " +
-                  "patchutils ior-hpc-daos-1 " +
-                  "romio-tests-daos-1 " +
-                  "testmpio " +
-                  "mpi4py-tests " +
-                  "hdf5-mpich-tests " +
-                  "hdf5-openmpi3-tests " +
-                  "hdf5-vol-daos-mpich-tests " +
-                  "hdf5-vol-daos-openmpi3-tests " +
-                  "MACSio-mpich " +
-                  "MACSio-openmpi3 " +
-                  "mpifileutils-mpich-daos-1 "
-    if (distro.startsWith('leap15')) {
-        return daos_pkgs + pkgs
-    } else if (distro.startsWith('el7') || distro.startsWith('centos7')) {
-        // need to exclude openmpi until we remove it from the repo
-        return  "--exclude openmpi " + daos_pkgs + pkgs
-    } else if (distro.startsWith('ubuntu20')) {
-        return daos_pkgs + " openmpi-bin ndctl fio"
-    } else {
-        error 'functional_packages not implemented for ' + distro
-    }
-}
+@Library(value="pipeline-lib@bmurrell/move-functions-from-DAOS-Jenkinsfile") _
 
 // Don't define this as a type or it loses it's global scope
 target_branch = env.CHANGE_TARGET ? env.CHANGE_TARGET : env.BRANCH_NAME
@@ -308,7 +59,8 @@ String get_priority() {
 }
 
 String rpm_test_version() {
-    return cachedCommitPragma(pragma: 'RPM-test-version')
+    println("rpm_test_version()")
+    return cachedCommitPragma('RPM-test-version')
 }
 
 boolean skip_prebuild() {
@@ -316,136 +68,154 @@ boolean skip_prebuild() {
 }
 
 boolean skip_checkpatch() {
-    return skip_stage('checkpatch') ||
-           doc_only_change() ||
-           quick_functional()
+    return skipStage(stage: 'checkpatch',
+                     cache: commit_pragma_cache) ||
+           docOnlyChange(target_branch) ||
+           quickFunctional(cache: commit_pragma_cache)
 }
 
 boolean skip_build() {
     // always build branch landings as we depend on lastSuccessfulBuild
     // always having RPMs in it
     return (env.BRANCH_NAME != target_branch) &&
-           skip_stage('build') ||
-           doc_only_change() ||
+           skipStage(stage: 'build',
+                     cache: commit_pragma_cache) ||
+           docOnlyChange(target_branch) ||
            rpm_test_version() != ''
-}
-
-boolean quick_functional() {
-    return cachedCommitPragma(pragma: 'Quick-Functional') == 'true'
 }
 
 boolean skip_build_rpm(String distro) {
     return target_branch == 'weekly-testing' ||
-           skip_stage('build-' + distro + '-rpm') ||
-           distro == 'ubuntu20' && quick_functional()
+           skipStage(stage: 'build-' + distro + '-rpm',
+                     cache: commit_pragma_cache) ||
+           distro == 'ubuntu20' && quickFunctional(cache: commit_pragma_cache)
 }
 
 boolean skip_build_on_centos7_gcc() {
-    return skip_stage('build-centos7-gcc') ||
-           quick_functional()
+    return skipStage(stage: 'build-centos7-gcc',
+                     cache: commit_pragma_cache) ||
+           quickFunctional(cache: commit_pragma_cache)
 }
 
 boolean skip_ftest(String distro) {
     return distro == 'ubuntu20' ||
-           skip_stage('func-test') ||
-           skip_stage('func-test-vm') ||
+           skipStage(stage: 'func-test') ||
+           skipStage(stage: 'func-test-vm') ||
            ! tests_in_stage('vm') ||
-           skip_stage('func-test-' + distro)
+           skipStage(stage: 'func-test-' + distro,
+                     cache: commit_pragma_cache)
 }
 
 boolean skip_test_rpms_centos7() {
     return target_branch == 'weekly-testing' ||
-           skip_stage('test') ||
-           skip_stage('test-centos-rpms') ||
-           quick_functional()
+           skipStage(stage: 'test',
+                     cache: commit_pragma_cache) ||
+           skipStage(stage: 'test-centos-rpms',
+                     cache: commit_pragma_cache) ||
+           quickFunctional(cache: commit_pragma_cache)
 }
 
 boolean skip_scan_rpms_centos7() {
     return target_branch == 'weekly-testing' ||
-           skip_stage('scan-centos-rpms', true) ||
-           quick_functional()
+           skipStage(stage: 'scan-centos-rpms',
+                     def_val: true,
+                     cache: commit_pragma_cache) ||
+           quickFunctional(cache: commit_pragma_cache)
 }
 
 boolean tests_in_stage(String size) {
-    Map stage_info = parseStageInfo()
     return sh(label: "Get test list for ${size}",
               script: """cd src/tests/ftest
-                         ./list_tests.py """ + stage_info['test_tag'],
+                         ./list_tests.py """ + parseStageInfo()['test_tag'],
               returnStatus: true) == 0
 }
 
 boolean skip_ftest_hw(String size) {
     return env.DAOS_STACK_CI_HARDWARE_SKIP == 'true' ||
-           skip_stage('func-test') ||
-           skip_stage('func-hw-test') ||
-           skip_stage('func-hw-test-' + size) ||
+           skipStage(stage: 'func-hw-test',
+                     cache: commit_pragma_cache) ||
+           skipStage(stage: 'func-hw-test',
+                     cache: commit_pragma_cache)
+           skipStage(stage: 'func-hw-test-' + size,
+                     cache: commit_pragma_cache) ||
            ! tests_in_stage(size) ||
            (env.BRANCH_NAME == 'master' && ! startedByTimer())
 }
 
 boolean skip_bandit_check() {
     return cachedCommitPragma(pragma: 'Skip-python-bandit',
-                              def_val: 'true') == 'true' ||
-           quick_functional()
+                              def_val: 'true',
+                              cache: commit_pragma_cache) == 'true' ||
+           quickFunctional(cache: commit_pragma_cache)
 }
 
 boolean skip_build_on_centos7_bullseye() {
     return  env.NO_CI_TESTING == 'true' ||
-            skip_stage('bullseye', true) ||
-            quick_functional()
+            skipStage(stage: 'bullseye',
+                      def_val: true,
+                      cache: commit_pragma_cache) ||
+            quickFunctional(cache: commit_pragma_cache)
 }
 
 boolean skip_build_on_centos7_gcc_debug() {
-    return skip_stage('build-centos7-gcc-debug') ||
-           quickbuild()
+    return skipStage(stage: 'build-centos7-gcc-debug',
+                     cache: commit_pragma_cache) ||
+           quickBuild(commit_pragma_cache)
 }
 
 boolean skip_build_on_centos7_gcc_release() {
-    return skip_stage('build-centos7-gcc-release') ||
-           quickbuild()
+    return skipStage(stage: 'build-centos7-gcc-release',
+                     cache: commit_pragma_cache) ||
+           quickBuild(commit_pragma_cache)
 }
 
 boolean skip_build_on_centos8_gcc_dev() {
-    return skip_stage('build-centos8-gcc-dev') ||
-           quickbuild()
+    return skipStage(stage: 'build-centos8-gcc-dev',
+                     cache: commit_pragma_cache) ||
+           quickBuild(commit_pragma_cache)
 }
 
 boolean skip_build_on_landing_branch() {
     return env.BRANCH_NAME != target_branch ||
-           quickbuild()
+           quickBuild(commit_pragma_cache)
 }
 
 boolean skip_build_on_ubuntu_clang() {
     return target_branch == 'weekly-testing' ||
-           skip_stage('build-ubuntu-clang') ||
-           quickbuild()
+           skipStage(stage: 'build-ubuntu-clang',
+                     cache: commit_pragma_cache) ||
+           quickBuild(commit_pragma_cache)
 
 }
 
 boolean skip_build_on_leap15_gcc() {
-    return skip_stage('build-leap15-gcc') ||
-            quickbuild()
+    return skipStage(stage: 'build-leap15-gcc',
+                     cache: commit_pragma_cache) ||
+            quickBuild(commit_pragma_cache)
 }
 
 boolean skip_build_on_leap15_icc() {
     return target_branch == 'weekly-testing' ||
-           skip_stage('build-leap15-icc') ||
-           quickbuild()
+           skipStage(stage: 'build-leap15-icc',
+                     cache: commit_pragma_cache) ||
+           quickBuild(commit_pragma_cache)
 }
 
 boolean skip_unit_testing_stage() {
     return  env.NO_CI_TESTING == 'true' ||
-            (skip_stage('build') &&
+            (skipStage(stage: 'build',
+                       cache: commit_pragma_cache) &&
              rpm_test_version() == '') ||
-            doc_only_change() ||
+            docOnlyChange(target_branch) ||
             skip_build_on_centos7_gcc() ||
-            skip_stage('unit-tests')
+            skipStage(stage: 'unit-tests',
+                     cache: commit_pragma_cache)
 }
 
 boolean skip_coverity() {
-    return skip_stage('coverity-test') ||
-           quick_functional() ||
-           skip_stage('build')
+    return skipStage(stage: 'coverity-test', cache: commit_pragma_cache) ||
+           quickFunctional(cache: commit_pragma_cache) ||
+           skipStage(stage: 'build', cache: commit_pragma_cache)
 }
 
 boolean skip_if_unstable() {
@@ -464,29 +234,35 @@ boolean skip_if_unstable() {
 
 boolean skip_testing_stage() {
     return  env.NO_CI_TESTING == 'true' ||
-            (skip_stage('build') &&
+            (skipStage(stage: 'build',
+                       cache: commit_pragma_cache) &&
              rpm_test_version() == '') ||
-            doc_only_change() ||
-            skip_stage('test') ||
+            docOnlyChange(target_branch) ||
+            skipStage(stage: 'test',
+                      cache: commit_pragma_cache) ||
             skip_if_unstable()
 }
 
 boolean skip_unit_test() {
-    return skip_stage('unit-test') ||
-           skip_stage('run_test')
+    return skipStage(stage: 'unit-test',
+                     cache: commit_pragma_cache) ||
+           skipStage(stage: 'run_test',
+                     cache: commit_pragma_cache)
 }
 
 boolean skip_bullseye_report() {
     return env.BULLSEYE == null ||
-           skip_stage('bullseye', true)
+           skipStage(stage: 'bullseye',
+                     def_val: true,
+                     cache: commit_pragma_cache)
 }
 
-// Reply with an empty string if quickbuild disabled to avoid discarding
+// Reply with an empty string if quickBuild disabled to avoid discarding
 // docker caches.
 String quick_build_deps(String distro, always=false) {
     String rpmspec_args = ""
     if (!always) {
-        if (!quickbuild() ) {
+        if (!quickBuild(commit_pragma_cache) ) {
             return ""
         }
     }
@@ -523,8 +299,8 @@ pipeline {
         GITHUB_USER = credentials('daos-jenkins-review-posting')
         SSH_KEY_ARGS = "-ici_key"
         CLUSH_ARGS = "-o$SSH_KEY_ARGS"
-        TEST_RPMS = cachedCommitPragma(pragma: 'RPM-test', def_val: 'true')
-        SCONS_FAULTS_ARGS = scons_faults_args()
+        TEST_RPMS = cachedCommitPragma(pragma: 'RPM-test', def_val: 'true', cache: commit_pragma_cache)
+        SCONS_FAULTS_ARGS = sconsFaultsArgs()
     }
 
     options {
@@ -563,7 +339,7 @@ pipeline {
                             filename 'Dockerfile.checkpatch'
                             dir 'utils/docker'
                             label 'docker_runner'
-                            additionalBuildArgs dockerBuildArgs(add_repos:false)
+                            additionalBuildArgs dockerBuildArgs(add_repos: false)
                         }
                     }
                     steps {
@@ -633,7 +409,7 @@ pipeline {
                         }
                     }
                     steps {
-                        pythonBanditCheck()
+                        pythonBanditCheck cache: commit_pragma_cache
                     }
                     post {
                         always {
@@ -668,28 +444,28 @@ pipeline {
                         }
                     }
                     steps {
-                        buildRpm()
+                        buildRpm cache: commit_pragma_cache
                     }
                     post {
                         success {
-                            buildRpmPost condition: 'success'
-                            script {
-                                Map stage_info = parseStageInfo()
-                                    stash name: stage_info['target'] + '-required-mercury-rpm-version',
-                                          includes: stage_info['target'] + '-required-mercury-rpm-version'
-                            }
+                            buildRpmPost condition: 'success',
+                                         cache: commit_pragma_cache
                         }
                         unstable {
-                            buildRpmPost condition: 'unstable'
+                            buildRpmPost condition: 'unstable',
+                                         cache: commit_pragma_cache
                         }
                         failure {
-                            buildRpmPost condition: 'failure'
+                            buildRpmPost condition: 'failure',
+                                         cache: commit_pragma_cache
                         }
                         unsuccessful {
-                            buildRpmPost condition: 'unsuccessful'
+                            buildRpmPost condition: 'unsuccessful',
+                                         cache: commit_pragma_cache
                         }
                         cleanup {
-                            buildRpmPost condition: 'cleanup'
+                            buildRpmPost condition: 'cleanup',
+                                         cache: commit_pragma_cache
                         }
                     }
                 }
@@ -708,23 +484,28 @@ pipeline {
                         }
                     }
                     steps {
-                        buildRpm()
+                        buildRpm cache: commit_pragma_cache
                     }
                     post {
                         success {
-                            buildRpmPost condition: 'success'
+                            buildRpmPost condition: 'success',
+                                         cache: commit_pragma_cache
                         }
                         unstable {
-                            buildRpmPost condition: 'unstable'
+                            buildRpmPost condition: 'unstable',
+                                         cache: commit_pragma_cache
                         }
                         failure {
-                            buildRpmPost condition: 'failure'
+                            buildRpmPost condition: 'failure',
+                                         cache: commit_pragma_cache
                         }
                         unsuccessful {
-                            buildRpmPost condition: 'unsuccessful'
+                            buildRpmPost condition: 'unsuccessful',
+                                         cache: commit_pragma_cache
                         }
                         cleanup {
-                            buildRpmPost condition: 'cleanup'
+                            buildRpmPost condition: 'cleanup',
+                                         cache: commit_pragma_cache
                         }
                     }
                 }
@@ -744,23 +525,28 @@ pipeline {
                         }
                     }
                     steps {
-                        buildRpm()
+                        buildRpm cache: commit_pragma_cache
                     }
                     post {
                         success {
-                            buildRpmPost condition: 'success'
+                            buildRpmPost condition: 'success',
+                                         cache: commit_pragma_cache
                         }
                         unstable {
-                            buildRpmPost condition: 'unstable'
+                            buildRpmPost condition: 'unstable',
+                                         cache: commit_pragma_cache
                         }
                         failure {
-                            buildRpmPost condition: 'failure'
+                            buildRpmPost condition: 'failure',
+                                         cache: commit_pragma_cache
                         }
                         unsuccessful {
-                            buildRpmPost condition: 'unsuccessful'
+                            buildRpmPost condition: 'unsuccessful',
+                                         cache: commit_pragma_cache
                         }
                         cleanup {
-                            buildRpmPost condition: 'cleanup'
+                            buildRpmPost condition: 'cleanup',
+                                         cache: commit_pragma_cache
                         }
                     }
                 }
@@ -773,18 +559,19 @@ pipeline {
                         dockerfile {
                             filename 'utils/docker/Dockerfile.centos.7'
                             label 'docker_runner'
-                            additionalBuildArgs dockerBuildArgs(qb: quickbuild()) +
+                            additionalBuildArgs dockerBuildArgs(qb: quickBuild(commit_pragma_cache)) +
                                                 " -t ${sanitized_JOB_NAME}-centos7 " +
                                                 ' --build-arg QUICKBUILD_DEPS="' +
                                                 quick_build_deps('centos7') + '"' +
-                                                ' --build-arg REPOS="' + pr_repos() + '"'
+                                                ' --build-arg REPOS="' + prRepos(commit_pragma_cache) + '"'
                         }
                     }
                     steps {
-                        sconsBuild parallel_build: parallel_build(),
+                        sconsBuild parallel_build: parallelBuild(commit_pragma_cache),
+                                   cache: commit_pragma_cache,
                                    stash_files: 'ci/test_files_to_stash.txt',
                                    scons_exe: 'scons-3',
-                                   scons_args: scons_faults_args()
+                                   scons_args: sconsFaultsArgs()
                     }
                     post {
                         always {
@@ -811,19 +598,20 @@ pipeline {
                         dockerfile {
                             filename 'utils/docker/Dockerfile.centos.7'
                             label 'docker_runner'
-                            additionalBuildArgs dockerBuildArgs(qb: quickbuild()) +
+                            additionalBuildArgs dockerBuildArgs(qb: quickBuild(commit_pragma_cache)) +
                                 " -t ${sanitized_JOB_NAME}-centos7 " +
                                 ' --build-arg BULLSEYE=' + env.BULLSEYE +
                                 ' --build-arg QUICKBUILD_DEPS="' +
                                 quick_build_deps('centos7') + '"' +
-                                ' --build-arg REPOS="' + pr_repos() + '"'
+                                ' --build-arg REPOS="' + prRepos(commit_pragma_cache) + '"'
                         }
                     }
                     steps {
-                        sconsBuild parallel_build: parallel_build(),
+                        sconsBuild parallel_build: parallelBuild(commit_pragma_cache),
+                                   cache: commit_pragma_cache,
                                    stash_files: 'ci/test_files_to_stash.txt',
                                    scons_exe: 'scons-3',
-                                   scons_args: scons_faults_args()
+                                   scons_args: sconsFaultsArgs()
                     }
                     post {
                         always {
@@ -850,16 +638,17 @@ pipeline {
                         dockerfile {
                             filename 'utils/docker/Dockerfile.centos.7'
                             label 'docker_runner'
-                            additionalBuildArgs dockerBuildArgs(qb: quickbuild(),
-                                                                deps_build:true) +
+                            additionalBuildArgs dockerBuildArgs(qb: quickBuild(commit_pragma_cache),
+                                                                deps_build: true) +
                                                 " -t ${sanitized_JOB_NAME}-centos7 " +
                                                 ' --build-arg QUICKBUILD_DEPS="' +
                                                 quick_build_deps('centos7') + '"' +
-                                                ' --build-arg REPOS="' + pr_repos() + '"'
+                                                ' --build-arg REPOS="' + prRepos(commit_pragma_cache) + '"'
                         }
                     }
                     steps {
-                        sconsBuild parallel_build: parallel_build(),
+                        sconsBuild parallel_build: parallelBuild(commit_pragma_cache),
+                                   cache: commit_pragma_cache,
                                    scons_exe: 'scons-3',
                                    scons_args: "PREFIX=/opt/daos TARGET_TYPE=release",
                                    build_deps: "no"
@@ -889,16 +678,17 @@ pipeline {
                         dockerfile {
                             filename 'utils/docker/Dockerfile.centos.7'
                             label 'docker_runner'
-                            additionalBuildArgs dockerBuildArgs(qb: quickbuild(),
-                                                                deps_build:true) +
+                            additionalBuildArgs dockerBuildArgs(qb: quickBuild(commit_pragma_cache),
+                                                                deps_build: true) +
                                                 " -t ${sanitized_JOB_NAME}-centos7 " +
                                                 ' --build-arg QUICKBUILD_DEPS="' +
                                                 quick_build_deps('centos7') + '"' +
-                                                ' --build-arg REPOS="' + pr_repos() + '"'
+                                                ' --build-arg REPOS="' + prRepos(commit_pragma_cache) + '"'
                         }
                     }
                     steps {
-                        sconsBuild parallel_build: parallel_build(),
+                        sconsBuild parallel_build: parallelBuild(commit_pragma_cache),
+                                   cache: commit_pragma_cache,
                                    scons_exe: 'scons-3',
                                    scons_args: "PREFIX=/opt/daos TARGET_TYPE=release",
                                    build_deps: "no"
@@ -928,17 +718,18 @@ pipeline {
                         dockerfile {
                             filename 'utils/docker/Dockerfile.centos.7'
                             label 'docker_runner'
-                            additionalBuildArgs dockerBuildArgs(qb: quickbuild(),
-                                                                deps_build:true) +
+                            additionalBuildArgs dockerBuildArgs(qb: quickBuild(commit_pragma_cache),
+                                                                deps_build: true) +
                                                 " -t ${sanitized_JOB_NAME}-centos7 " +
                                                 ' --build-arg QUICKBUILD_DEPS="' +
                                                 quick_build_deps('centos7') + '"'
                         }
                     }
                     steps {
-                        sconsBuild parallel_build: parallel_build(),
+                        sconsBuild parallel_build: parallelBuild(commit_pragma_cache),
+                                   cache: commit_pragma_cache,
                                    scons_exe: 'scons-3',
-                                   scons_args: scons_faults_args() + " PREFIX=/opt/daos TARGET_TYPE=release",
+                                   scons_args: sconsFaultsArgs() + " PREFIX=/opt/daos TARGET_TYPE=release",
                                    build_deps: "no"
                     }
                     post {
@@ -966,14 +757,15 @@ pipeline {
                         dockerfile {
                             filename 'utils/docker/Dockerfile.centos.8'
                             label 'docker_runner'
-                            additionalBuildArgs dockerBuildArgs(qb: quickbuild(),
-                                                                deps_build:true) +
+                            additionalBuildArgs dockerBuildArgs(qb: quickBuild(commit_pragma_cache),
+                                                                deps_build: true) +
                                                 " -t ${sanitized_JOB_NAME}-centos8 "
                         }
                     }
                     steps {
-                        sconsBuild parallel_build: parallel_build(),
-                                   scons_args: scons_faults_args() + " PREFIX=/opt/daos TARGET_TYPE=release",
+                        sconsBuild parallel_build: parallelBuild(commit_pragma_cache),
+                                   cache: commit_pragma_cache,
+                                   scons_args: sconsFaultsArgs() + " PREFIX=/opt/daos TARGET_TYPE=release",
                                    build_deps: "no",
                                    scons_exe: 'scons-3'
                     }
@@ -1002,13 +794,14 @@ pipeline {
                         dockerfile {
                             filename 'utils/docker/Dockerfile.ubuntu.20.04'
                             label 'docker_runner'
-                            additionalBuildArgs dockerBuildArgs(deps_build:true) +
+                            additionalBuildArgs dockerBuildArgs(deps_build: true) +
                                                 " -t ${sanitized_JOB_NAME}-ubuntu20.04"
                         }
                     }
                     steps {
-                        sconsBuild parallel_build: parallel_build(),
-                                   scons_args: scons_faults_args() + " PREFIX=/opt/daos TARGET_TYPE=release",
+                        sconsBuild parallel_build: parallelBuild(commit_pragma_cache),
+                                   cache: commit_pragma_cache,
+                                   scons_args: sconsFaultsArgs() + " PREFIX=/opt/daos TARGET_TYPE=release",
                                    build_deps: "no"
                     }
                     post {
@@ -1036,13 +829,14 @@ pipeline {
                         dockerfile {
                             filename 'utils/docker/Dockerfile.ubuntu.20.04'
                             label 'docker_runner'
-                            additionalBuildArgs dockerBuildArgs(deps_build:true) +
+                            additionalBuildArgs dockerBuildArgs(deps_build: true) +
                                                 " -t ${sanitized_JOB_NAME}-ubuntu20.04"
                         }
                     }
                     steps {
-                        sconsBuild parallel_build: parallel_build(),
-                                   scons_args: scons_faults_args() + " PREFIX=/opt/daos TARGET_TYPE=release",
+                        sconsBuild parallel_build: parallelBuild(commit_pragma_cache),
+                                   cache: commit_pragma_cache,
+                                   scons_args: sconsFaultsArgs() + " PREFIX=/opt/daos TARGET_TYPE=release",
                                    build_deps: "no"
                     }
                     post {
@@ -1070,17 +864,18 @@ pipeline {
                         dockerfile {
                             filename 'utils/docker/Dockerfile.leap.15'
                             label 'docker_runner'
-                            additionalBuildArgs dockerBuildArgs(qb: quickbuild()) +
+                            additionalBuildArgs dockerBuildArgs(qb: quickBuild(commit_pragma_cache)) +
                                                 " -t ${sanitized_JOB_NAME}-leap15 " +
                                                 ' --build-arg QUICKBUILD_DEPS="' +
                                                 quick_build_deps('leap15') + '"' +
-                                                ' --build-arg REPOS="' + pr_repos() + '"'
+                                                ' --build-arg REPOS="' + prRepos(commit_pragma_cache) + '"'
                         }
                     }
                     steps {
-                        sconsBuild parallel_build: parallel_build(),
+                        sconsBuild parallel_build: parallelBuild(commit_pragma_cache),
+                                   cache: commit_pragma_cache,
                                    stash_files: 'ci/test_files_to_stash.txt',
-                                   scons_args: scons_faults_args()
+                                   scons_args: sconsFaultsArgs()
                     }
                     post {
                         always {
@@ -1107,13 +902,14 @@ pipeline {
                         dockerfile {
                             filename 'utils/docker/Dockerfile.leap.15'
                             label 'docker_runner'
-                            additionalBuildArgs dockerBuildArgs(deps_build:true) +
+                            additionalBuildArgs dockerBuildArgs(deps_build: true) +
                                                 " -t ${sanitized_JOB_NAME}-leap15"
                         }
                     }
                     steps {
-                        sconsBuild parallel_build: parallel_build(),
-                                   scons_args: scons_faults_args() + " PREFIX=/opt/daos TARGET_TYPE=release",
+                        sconsBuild parallel_build: parallelBuild(commit_pragma_cache),
+                                   cache: commit_pragma_cache,
+                                   scons_args: sconsFaultsArgs() + " PREFIX=/opt/daos TARGET_TYPE=release",
                                    build_deps: "no"
                     }
                     post {
@@ -1141,14 +937,15 @@ pipeline {
                         dockerfile {
                             filename 'utils/docker/Dockerfile.leap.15'
                             label 'docker_runner'
-                            additionalBuildArgs dockerBuildArgs(deps_build:true) +
+                            additionalBuildArgs dockerBuildArgs(deps_build: true) +
                                                 " -t ${sanitized_JOB_NAME}-leap15"
                             args '-v /opt/intel:/opt/intel'
                         }
                     }
                     steps {
-                        sconsBuild parallel_build: parallel_build(),
-                                   scons_args: scons_faults_args() + " PREFIX=/opt/daos TARGET_TYPE=release",
+                        sconsBuild parallel_build: parallelBuild(commit_pragma_cache),
+                                   cache: commit_pragma_cache,
+                                   scons_args: sconsFaultsArgs() + " PREFIX=/opt/daos TARGET_TYPE=release",
                                    build_deps: "no"
                     }
                     post {
@@ -1184,29 +981,32 @@ pipeline {
                         label 'ci_vm1'
                     }
                     steps {
-                        unitTest timeout_time: 30,
-                                 inst_repos: pr_repos(),
-                                 inst_rpms: unit_packages()
+                        unitTest timeout_time: 60,
+                                 inst_repos: prRepos(commit_pragma_cache),
+                                 inst_rpms: unitPackages(commit_pragma_cache),
+                                 cache: commit_pragma_cache
                     }
                     post {
                       always {
-                            unitTestPost artifacts: ['unit_test_logs/*']
+                            unitTestPost artifacts: ['unit_test_logs/*'],
+                                         cache: commit_pragma_cache
                         }
                     }
                 }
                 stage('NLT') {
                     when {
                       beforeAgent true
-                      expression { ! skip_stage('nlt') }
+                      expression { ! skipStage(stage: 'nlt',
+                                                cache: commit_pragma_cache) }
                     }
                     agent {
                         label 'ci_nlt_1'
                     }
                     steps {
                         unitTest timeout_time: 30,
-                                 inst_repos: pr_repos(),
+                                 inst_repos: prRepos(commit_pragma_cache),
                                  test_script: 'ci/unit/test_nlt.sh',
-                                 inst_rpms: unit_packages()
+                                 inst_rpms: unitPackages(commit_pragma_cache)
                     }
                     post {
                       always {
@@ -1236,7 +1036,9 @@ pipeline {
                 stage('Unit Test Bullseye') {
                     when {
                       beforeAgent true
-                      expression { ! skip_stage('bullseye', true) }
+                      expression { ! skipStage(stage: 'bullseye',
+                                               def_val: true,
+                                               cache: commit_pragma_cache) }
                     }
                     agent {
                         label 'ci_vm1'
@@ -1244,8 +1046,9 @@ pipeline {
                     steps {
                         unitTest timeout_time: 60,
                                  ignore_failure: true,
-                                 inst_repos: pr_repos(),
-                                 inst_rpms: unit_packages()
+                                 inst_repos: prRepos(commit_pragma_cache),
+                                 inst_rpms: unitPackages(commit_pragma_cache),
+                                 cache: commit_pragma_cache
                     }
                     post {
                         always {
@@ -1255,14 +1058,16 @@ pipeline {
                             // added.
                             unitTestPost ignore_failure: true,
                                          artifacts: ['covc_test_logs/*',
-                                                     'covc_vm_test/**']
+                                                     'covc_vm_test/**'],
+                                         cache: commit_pragma_cache
                         }
                     }
                 } // stage('Unit test Bullseye')
                 stage('Unit Test with memcheck') {
                     when {
                       beforeAgent true
-                      expression { ! skip_stage('unit-test-memcheck') }
+                      expression { ! skipStage(stage: 'unit-test-memcheck',
+                                                cache: commit_pragma_cache) }
                     }
                     agent {
                         label 'ci_vm1'
@@ -1270,8 +1075,8 @@ pipeline {
                     steps {
                         unitTest timeout_time: 30,
                                  ignore_failure: true,
-                                 inst_repos: pr_repos(),
-                                 inst_rpms: unit_packages()
+                                 inst_repos: prRepos(commit_pragma_cache),
+                                 inst_rpms: unitPackages(commit_pragma_cache)
                     }
                     post {
                         always {
@@ -1302,13 +1107,14 @@ pipeline {
                                                 " -t ${sanitized_JOB_NAME}-centos7 " +
                                                 ' --build-arg QUICKBUILD_DEPS="' +
                                                 quick_build_deps('centos7', true) + '"' +
-                                                ' --build-arg REPOS="' + pr_repos() + '"'
+                                                ' --build-arg REPOS="' + prRepos(commit_pragma_cache) + '"'
                         }
                     }
                     steps {
                         sconsBuild coverity: "daos-stack/daos",
-                                   parallel_build: parallel_build(),
+                                   cache: commit_pragma_cache,
                                    scons_exe: 'scons-3'
+                                   parallel_build: parallelBuild(commit_pragma_cache)
                     }
                     post {
                         success {
@@ -1328,8 +1134,9 @@ pipeline {
                         label 'ci_vm9'
                     }
                     steps {
-                        functionalTest inst_repos: daos_repos(),
-                                       inst_rpms: functional_packages(),
+                        functionalTest inst_repos: daosRepos(commit_pragma_cache),
+                                       inst_rpms: functionalPackages(1, commit_pragma_cache),
+                                       cache: commit_pragma_cache,
                                        test_function: 'runTestFunctionalV2'
                     }
                     post {
@@ -1347,8 +1154,9 @@ pipeline {
                         label 'ci_vm9'
                     }
                     steps {
-                        functionalTest inst_repos: daos_repos(),
-                                       inst_rpms: functional_packages(),
+                        functionalTest inst_repos: daosRepos(commit_pragma_cache),
+                                       inst_rpms: functionalPackages(1, commit_pragma_cache),
+                                       cache: commit_pragma_cache,
                                        test_function: 'runTestFunctionalV2'
                     }
                     post {
@@ -1366,8 +1174,9 @@ pipeline {
                         label 'ci_vm9'
                     }
                     steps {
-                        functionalTest inst_repos: daos_repos(),
-                                       inst_rpms: functional_packages(),
+                        functionalTest inst_repos: daosRepos(commit_pragma_cache),
+                                       inst_rpms: functionalPackages(1, commit_pragma_cache),
+                                       cache: commit_pragma_cache,
                                        test_function: 'runTestFunctionalV2'
                     }
                     post {
@@ -1425,12 +1234,12 @@ pipeline {
                     }
                     agent {
                         // 2 node cluster with 1 IB/node + 1 test control node
-                        label 'ci_nvme3'
+                        label 'stage_nvme3'
                     }
                     steps {
-                        functionalTest target: hw_distro_target(),
-                                       inst_repos: daos_repos(),
-                                       inst_rpms: functional_packages(),
+                        functionalTest inst_repos: daosRepos(commit_pragma_cache),
+                                       inst_rpms: functionalPackages(1, commit_pragma_cache),
+                                       cache: commit_pragma_cache,
                                        test_function: 'runTestFunctionalV2'
                     }
                     post {
@@ -1449,9 +1258,10 @@ pipeline {
                         label 'ci_nvme5'
                     }
                     steps {
-                        functionalTest target: hw_distro_target(),
-                                       inst_repos: daos_repos(),
-                                       inst_rpms: functional_packages(),
+                        functionalTest target: hwDistroTarget(commit_pragma_cache),
+                                       inst_repos: daosRepos(commit_pragma_cache),
+                                       inst_rpms: functionalPackages(1, commit_pragma_cache),
+                                       cache: commit_pragma_cache,
                                        test_function: 'runTestFunctionalV2'
                    }
                     post {
@@ -1470,9 +1280,10 @@ pipeline {
                         label 'ci_nvme9'
                     }
                     steps {
-                        functionalTest target: hw_distro_target(),
-                                       inst_repos: daos_repos(),
-                                       inst_rpms: functional_packages(),
+                        functionalTest target: hwDistroTarget(commit_pragma_cache),
+                                       inst_repos: daosRepos(commit_pragma_cache),
+                                       inst_rpms: functionalPackages(1, commit_pragma_cache),
+                                       cache: commit_pragma_cache,
                                        test_function: 'runTestFunctionalV2'
                     }
                     post {
@@ -1494,12 +1305,12 @@ pipeline {
                         dockerfile {
                             filename 'utils/docker/Dockerfile.centos.7'
                             label 'docker_runner'
-                            additionalBuildArgs dockerBuildArgs(qb: quickbuild()) +
+                            additionalBuildArgs dockerBuildArgs(qb: quickBuild(commit_pragma_cache)) +
                                 " -t ${sanitized_JOB_NAME}-centos7 " +
                                 ' --build-arg BULLSEYE=' + env.BULLSEYE +
                                 ' --build-arg QUICKBUILD_DEPS="' +
                                 quick_build_deps('centos7') + '"' +
-                                ' --build-arg REPOS="' + pr_repos() + '"'
+                                ' --build-arg REPOS="' + prRepos(commit_pragma_cache) + '"'
                         }
                     }
                     steps {
@@ -1509,7 +1320,8 @@ pipeline {
                                             coverage_healthy: [methodCoverage: 0,
                                                                conditionalCoverage: 0,
                                                                statementCoverage: 0],
-                                            ignore_failure: true
+                                            ignore_failure: true,
+                                            cache: commit_pragma_cache
                     }
                 } // stage('Bullseye Report')
             } // parallel

@@ -278,7 +278,13 @@ func invokeUnaryRPC(parentCtx context.Context, log debugLogger, c UnaryInvoker, 
 		// send the request to a server that can handle the request directly.
 		rnd := rand.New(msCandidateRandSource)
 		msCandidates := hostlist.MustCreateSet("")
-		for i := 0; i < len(defaultHosts) && msCandidates.Count() < maxMSCandidates; i++ {
+
+		numCandidates := maxMSCandidates
+		if len(defaultHosts) < numCandidates {
+			numCandidates = len(defaultHosts)
+		}
+
+		for msCandidates.Count() < numCandidates {
 			if _, err := msCandidates.Insert(defaultHosts[rnd.Intn(len(defaultHosts))]); err != nil {
 				return nil, errors.Wrap(err, "failed to build MS candidates set")
 			}
@@ -288,6 +294,10 @@ func invokeUnaryRPC(parentCtx context.Context, log debugLogger, c UnaryInvoker, 
 			return nil, errors.New("unable to select MS candidates")
 		}
 	}
+
+	// Copy the starting hostlist to use for reset on retry later.
+	startHostList := make([]string, len(req.getHostList()))
+	copy(startHostList, req.getHostList())
 
 	isHardFailure := func(err error, reqCtx context.Context) bool {
 		if err == nil {
@@ -362,6 +372,10 @@ func invokeUnaryRPC(parentCtx context.Context, log debugLogger, c UnaryInvoker, 
 				if err := req.onRetry(tryCtx, try); err != nil {
 					return ur, nil
 				}
+
+				// Reset the hostlist to the starting hostlist, in order
+				// to restart the search for the current MS leader.
+				req.SetHostList(startHostList)
 				break
 			}
 

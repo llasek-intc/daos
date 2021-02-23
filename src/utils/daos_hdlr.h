@@ -5,7 +5,11 @@
  */
 
 enum fs_op {
-	FS_COPY
+	FS_COPY,
+	FS_SET_OCLASS,
+	FS_GET_OCLASS,
+	FS_SET_CSIZE,
+	FS_GET_CSIZE,
 };
 
 enum cont_op {
@@ -85,6 +89,10 @@ struct cmd_args_s {
 	daos_epoch_t		epcrange_end;
 	daos_obj_id_t		oid;
 	daos_prop_t		*props;		/* --properties cont create */
+
+	/* DFS related */
+	char			*dfs_prefix;	/* --dfs-prefix name */
+	char			*dfs_path;	/* --dfs-path file/dir */
 
 	FILE			*ostream;	/* help_hdlr() stream */
 	char			*outfile;	/* --outfile path */
@@ -168,6 +176,7 @@ int pool_autotest_hdlr(struct cmd_args_s *ap);
 
 /* filesystem operations */
 int fs_copy_hdlr(struct cmd_args_s *ap);
+int fs_dfs_hdlr(struct cmd_args_s *ap);
 
 /* Container operations */
 int cont_create_hdlr(struct cmd_args_s *ap);

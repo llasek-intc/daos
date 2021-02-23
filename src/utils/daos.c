@@ -36,11 +36,22 @@
 
 const char		*default_sysname = DAOS_DEFAULT_SYS_NAME;
 
+#define RC_PRINT_HELP	2
+#define RC_NO_HELP	-2
+
 static enum fs_op
 filesystem_op_parse(const char *str)
 {
 	if (strcmp(str, "copy") == 0)
 		return FS_COPY;
+	if (strcmp(str, "set-oclass") == 0)
+		return FS_SET_OCLASS;
+	if (strcmp(str, "get-oclass") == 0)
+		return FS_GET_OCLASS;
+	if (strcmp(str, "set-chunk-size") == 0)
+		return FS_SET_CSIZE;
+	if (strcmp(str, "get-chunk-size") == 0)
+		return FS_GET_CSIZE;
 	return -1;
 }
 
@@ -545,7 +556,9 @@ common_op_parse_hdlr(int argc, char *argv[], struct cmd_args_s *ap)
 		{"dst",		required_argument,	NULL,	'D'},
 		{"type",	required_argument,	NULL,	't'},
 		{"oclass",	required_argument,	NULL,	'o'},
-		{"chunk_size",	required_argument,	NULL,	'z'},
+		{"chunk-size",	required_argument,	NULL,	'z'},
+		{"dfs-prefix",	required_argument,	NULL,	'I'},
+		{"dfs-path",	required_argument,	NULL,	'H'},
 		{"snap",	required_argument,	NULL,	's'},
 		{"epc",		required_argument,	NULL,	'e'},
 		{"epcrange",	required_argument,	NULL,	'r'},
@@ -562,8 +575,6 @@ common_op_parse_hdlr(int argc, char *argv[], struct cmd_args_s *ap)
 		{NULL,		0,			NULL,	0}
 	};
 	int			rc;
-	const int		RC_PRINT_HELP = 2;
-	const int		RC_NO_HELP = -2;
 	char			*cmdname = NULL;
 
 	assert(ap != NULL);
@@ -679,6 +690,16 @@ common_op_parse_hdlr(int argc, char *argv[], struct cmd_args_s *ap)
 		case 'D':
 			D_STRNDUP(ap->dst, optarg, strlen(optarg));
 			if (ap->dst == NULL)
+				D_GOTO(out_free, rc = RC_NO_HELP);
+			break;
+		case 'I':
+			D_STRNDUP(ap->dfs_prefix, optarg, strlen(optarg));
+			if (ap->dfs_prefix == NULL)
+				D_GOTO(out_free, rc = RC_NO_HELP);
+			break;
+		case 'H':
+			D_STRNDUP(ap->dfs_path, optarg, strlen(optarg));
+			if (ap->dfs_path == NULL)
 				D_GOTO(out_free, rc = RC_NO_HELP);
 			break;
 		case 't':
@@ -872,7 +893,6 @@ pool_op_hdlr(struct cmd_args_s *ap)
 {
 	int			rc = 0;
 	enum pool_op		op;
-	const int		RC_PRINT_HELP = 2;
 
 	assert(ap != NULL);
 	op = ap->p_op;
@@ -944,6 +964,55 @@ call_dfuse_ioctl(char *path, struct dfuse_il_reply *reply)
 }
 
 static int
+resolve_with_duns(struct cmd_args_s *ap)
+{
+	struct duns_attr_t	dattr = {0};
+	struct dfuse_il_reply	il_reply = {0};
+	int			rc;
+
+	ARGS_VERIFY_PATH_NON_CREATE(ap, out, rc = RC_PRINT_HELP);
+
+	/*
+	 * Resolve pool, container UUIDs from path if needed Firtly check for a
+	 * unified namespace entry point, then if that isn't detected then check
+	 * for dfuse backing the path, and print pool/container/oid for the
+	 * path.
+	 */
+	rc = duns_resolve_path(ap->path, &dattr);
+	if (rc) {
+		rc = call_dfuse_ioctl(ap->path, &il_reply);
+		if (rc != 0) {
+			fprintf(stderr, "could not resolve pool, container by "
+				"path: %d %s %s\n", rc, strerror(rc), ap->path);
+			D_GOTO(out, rc);
+		}
+
+		ap->type = DAOS_PROP_CO_LAYOUT_POSIX;
+		uuid_copy(ap->p_uuid, il_reply.fir_pool);
+		uuid_copy(ap->c_uuid, il_reply.fir_cont);
+		ap->oid = il_reply.fir_oid;
+	} else {
+		ap->type = dattr.da_type;
+		uuid_copy(ap->p_uuid, dattr.da_puuid);
+		uuid_copy(ap->c_uuid, dattr.da_cuuid);
+		if (dattr.da_rel_path) {
+			if (ap->dfs_path) {
+				fprintf(stderr, "can't specify file or dir in "
+					"path and dfs_path at the same time\n");
+				return EINVAL;
+			}
+			D_STRNDUP(ap->dfs_path, dattr.da_rel_path,
+				  PATH_MAX);
+			if (ap->dfs_path == NULL)
+				return ENOMEM;
+		}
+	}
+
+out:
+	return rc;
+}
+
+static int
 fs_op_hdlr(struct cmd_args_s *ap)
 {
 	int rc = 0;
@@ -957,13 +1026,32 @@ fs_op_hdlr(struct cmd_args_s *ap)
 		if (ap->src == NULL || ap->dst == NULL) {
 			fprintf(stderr, "a source and destination path "
 				"must be provided\n");
+			D_GOTO(out, rc = RC_PRINT_HELP);
 		} else {
 			rc = fs_copy_hdlr(ap);
 		}
 		break;
+	case FS_SET_OCLASS:
+	case FS_GET_OCLASS:
+	case FS_SET_CSIZE:
+	case FS_GET_CSIZE:
+		if (ap->path != NULL) {
+			rc = resolve_with_duns(ap);
+			if (rc)
+				D_GOTO(out, rc);
+		} else {
+			ARGS_VERIFY_PUUID(ap, out, rc = RC_PRINT_HELP);
+			ARGS_VERIFY_CUUID(ap, out, rc = RC_PRINT_HELP);
+		}
+		rc = fs_dfs_hdlr(ap);
+		if (rc)
+			D_GOTO(out, rc);
+		break;
 	default:
 		break;
 	}
+
+out:
 	return rc;
 }
 
@@ -974,7 +1062,6 @@ cont_op_hdlr(struct cmd_args_s *ap)
 	int			rc = 0;
 	int			rc2 = 0;
 	enum cont_op		op;
-	const int		RC_PRINT_HELP = 2;
 
 	assert(ap != NULL);
 	op = ap->c_op;
@@ -999,38 +1086,9 @@ cont_op_hdlr(struct cmd_args_s *ap)
 	 * namespace.
 	 */
 	if ((op != CONT_CREATE) && (ap->path != NULL)) {
-		struct duns_attr_t dattr = {0};
-		struct dfuse_il_reply il_reply = {0};
-
-		ARGS_VERIFY_PATH_NON_CREATE(ap, out,
-					    rc = RC_PRINT_HELP);
-
-		/* Resolve pool, container UUIDs from path if needed
-		 * Firtly check for a unified namespace entry point,
-		 * then if that isn't detected then check for dfuse
-		 * backing the path, and print pool/container/oid
-		 * for the path.
-		 */
-		rc = duns_resolve_path(ap->path, &dattr);
-		if (rc) {
-			rc = call_dfuse_ioctl(ap->path, &il_reply);
-			if (rc != 0) {
-				fprintf(stderr, "could not resolve "
-					"pool, container by "
-					"path: %d %s %s\n",
-					rc, strerror(rc), ap->path);
-				D_GOTO(out, rc);
-			}
-
-			ap->type = DAOS_PROP_CO_LAYOUT_POSIX;
-			uuid_copy(ap->p_uuid, il_reply.fir_pool);
-			uuid_copy(ap->c_uuid, il_reply.fir_cont);
-			ap->oid = il_reply.fir_oid;
-		} else {
-			ap->type = dattr.da_type;
-			uuid_copy(ap->p_uuid, dattr.da_puuid);
-			uuid_copy(ap->c_uuid, dattr.da_cuuid);
-		}
+		rc = resolve_with_duns(ap);
+		if (rc)
+			D_GOTO(out, rc);
 	} else {
 		ARGS_VERIFY_PUUID(ap, out, rc = RC_PRINT_HELP);
 	}
@@ -1184,7 +1242,6 @@ obj_op_hdlr(struct cmd_args_s *ap)
 	int			rc;
 	int			rc2;
 	enum obj_op		op;
-	const int		RC_PRINT_HELP = 2;
 
 	assert(ap != NULL);
 	op = ap->o_op;

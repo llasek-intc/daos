@@ -57,6 +57,13 @@ typedef struct {
 	daos_range_t	       *iod_rgs;
 } dfs_iod_t;
 
+typedef struct {
+	/** object class */
+	daos_oclass_id_t	doi_oclass_id;
+	/** chunk size */
+	daos_size_t		doi_chunk_size;
+} dfs_obj_info_t;
+
 /**
  * Create a DFS container with the POSIX property layout set.  Optionally set
  * attributes for hints on the container.
@@ -563,6 +570,17 @@ dfs_exchange(dfs_t *dfs, dfs_obj_t *parent1, char *name1,
  */
 int
 dfs_get_mode(dfs_obj_t *obj, mode_t *mode);
+
+/**
+ * Retrieve some attributes of DFS object.
+ *
+ * \param[in]   obj     Open object to query.
+ * \param[out]  info    info object container object class, chunks size, etc.
+ *
+ * \return              0 on success, errno code on failure.
+ */
+int
+dfs_obj_get_info(dfs_obj_t *obj, dfs_obj_info_t *info);
 
 /**
  * Retrieve the DAOS open handle of a DFS file object. User should not close

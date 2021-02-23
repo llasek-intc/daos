@@ -41,10 +41,10 @@
 
 /** Magic Value */
 #define DFS_SB_MAGIC		0xda05df50da05df50
-/** DFS Layout version value */
-#define DFS_SB_VERSION		1
 /** DFS SB Version Value */
-#define DFS_LAYOUT_VERSION	1
+#define DFS_SB_VERSION		1
+/** DFS Layout version value */
+#define DFS_LAYOUT_VERSION	2
 /** Array object stripe size for regular files */
 #define DFS_DEFAULT_CHUNK_SIZE	1048576
 /** default object class for files & dirs */
@@ -55,7 +55,7 @@
 #define DFS_OBJ_GLOB_MAGIC	0xdf500b90
 
 /** Number of A-keys for attributes in any object entry */
-#define INODE_AKEYS	7
+#define INODE_AKEYS	8
 #define INODE_AKEY_NAME	"DFS_INODE"
 #define MODE_IDX	0
 #define OID_IDX		(sizeof(mode_t))
@@ -63,7 +63,8 @@
 #define MTIME_IDX	(ATIME_IDX + sizeof(time_t))
 #define CTIME_IDX	(MTIME_IDX + sizeof(time_t))
 #define CSIZE_IDX	(CTIME_IDX + sizeof(time_t))
-#define SYML_IDX	(CSIZE_IDX + sizeof(daos_size_t))
+#define OCLASS_IDX	(CSIZE_IDX + sizeof(daos_size_t))
+#define SYML_IDX	(OCLASS_IDX + sizeof(daos_oclass_id_t))
 
 /** Parameters for dkey enumeration */
 #define ENUM_DESC_NR	10
@@ -96,8 +97,16 @@ struct dfs_obj {
 	daos_obj_id_t		parent_oid;
 	/** entry name of the object in the parent */
 	char			name[DFS_MAX_PATH + 1];
-	/** Symlink value if object is a symbolic link */
-	char			*value;
+	union {
+		/** Symlink value if object is a symbolic link */
+		char	*value;
+		struct {
+			/** Default object class for all entries in dir */
+			daos_oclass_id_t        oclass;
+			/** Default chunk size for all entries in dir */
+			daos_size_t             chunk_size;
+		} d;
+	};
 };
 
 /** dfs struct that is instantiated for a mounted DFS namespace */
@@ -135,21 +144,23 @@ struct dfs {
 
 struct dfs_entry {
 	/** mode (permissions + entry type) */
-	mode_t		mode;
+	mode_t			mode;
 	/* Length of value string, not including NULL byte */
-	uint16_t	value_len;
+	uint16_t		value_len;
 	/** Object ID if not a symbolic link */
-	daos_obj_id_t	oid;
+	daos_obj_id_t		oid;
 	/* Time of last access */
-	time_t		atime;
+	time_t			atime;
 	/* Time of last modification */
-	time_t		mtime;
+	time_t			mtime;
 	/* Time of last status change */
-	time_t		ctime;
-	/** chunk size of file */
-	daos_size_t	chunk_size;
+	time_t			ctime;
+	/** chunk size of file or default for all files in a dir */
+	daos_size_t		chunk_size;
+	/** oclass of file or all files in a dir */
+	daos_oclass_id_t	oclass;
 	/** Sym Link value */
-	char		*value;
+	char			*value;
 };
 
 #if 0
@@ -295,9 +306,7 @@ oid_gen(dfs_t *dfs, daos_oclass_id_t oclass, bool file, daos_obj_id_t *oid)
 	daos_ofeat_t	feat = 0;
 	int		rc;
 
-	if (oclass == 0)
-		oclass = dfs->attr.da_oclass_id;
-
+	D_ASSERT(oclass);
 	rc = dfs_oclass_select(dfs->poh, oclass, &oclass);
 	if (rc)
 		return rc;
@@ -413,7 +422,8 @@ fetch_entry(daos_handle_t oh, daos_handle_t th, const char *name, size_t len,
 	iod->iod_nr	= 1;
 	recx.rx_idx	= 0;
 	recx.rx_nr	= sizeof(mode_t) + sizeof(time_t) * 3 +
-			    sizeof(daos_obj_id_t) + sizeof(daos_size_t);
+		sizeof(daos_obj_id_t) + sizeof(daos_size_t) +
+		sizeof(daos_oclass_id_t);
 	iod->iod_recxs	= &recx;
 	iod->iod_type	= DAOS_IOD_ARRAY;
 	iod->iod_size	= 1;
@@ -425,6 +435,7 @@ fetch_entry(daos_handle_t oh, daos_handle_t th, const char *name, size_t len,
 	d_iov_set(&sg_iovs[i++], &entry->mtime, sizeof(time_t));
 	d_iov_set(&sg_iovs[i++], &entry->ctime, sizeof(time_t));
 	d_iov_set(&sg_iovs[i++], &entry->chunk_size, sizeof(daos_size_t));
+	d_iov_set(&sg_iovs[i++], &entry->oclass, sizeof(daos_oclass_id_t));
 
 	sgl->sg_nr	= i;
 	sgl->sg_nr_out	= 0;
@@ -449,7 +460,8 @@ fetch_entry(daos_handle_t oh, daos_handle_t th, const char *name, size_t len,
 			D_GOTO(out, rc = ENOMEM);
 
 		recx.rx_idx = sizeof(mode_t) + sizeof(time_t) * 3 +
-			sizeof(daos_obj_id_t) + sizeof(daos_size_t);
+			sizeof(daos_obj_id_t) + sizeof(daos_size_t) +
+			sizeof(daos_oclass_id_t);
 		recx.rx_nr = PATH_MAX;
 
 		d_iov_set(&sg_iovs[0], value, PATH_MAX);
@@ -548,7 +560,8 @@ insert_entry(daos_handle_t oh, daos_handle_t th, const char *name, size_t len,
 	iod.iod_nr	= 1;
 	recx.rx_idx	= 0;
 	recx.rx_nr	= sizeof(mode_t) + sizeof(time_t) * 3 +
-		sizeof(daos_obj_id_t) + sizeof(daos_size_t);
+		sizeof(daos_obj_id_t) + sizeof(daos_size_t) +
+		sizeof(daos_oclass_id_t);
 	iod.iod_recxs	= &recx;
 	iod.iod_type	= DAOS_IOD_ARRAY;
 	iod.iod_size	= 1;
@@ -560,6 +573,7 @@ insert_entry(daos_handle_t oh, daos_handle_t th, const char *name, size_t len,
 	d_iov_set(&sg_iovs[i++], &entry->mtime, sizeof(time_t));
 	d_iov_set(&sg_iovs[i++], &entry->ctime, sizeof(time_t));
 	d_iov_set(&sg_iovs[i++], &entry->chunk_size, sizeof(daos_size_t));
+	d_iov_set(&sg_iovs[i++], &entry->oclass, sizeof(daos_oclass_id_t));
 
 	/** Add symlink value if Symlink */
 	if (S_ISLNK(entry->mode)) {
@@ -795,6 +809,22 @@ open_file(dfs_t *dfs, daos_handle_t th, dfs_obj_t *parent, int flags,
 				goto fopen;
 		}
 
+		/** set oclass for file. order: API, parent dir, cont default */
+		if (cid == 0) {
+			if (parent->d.oclass == 0)
+				cid = dfs->attr.da_oclass_id;
+			else
+				cid = parent->d.oclass;
+		}
+
+		/** same logic for chunk size */
+		if (chunk_size == 0) {
+			if (parent->d.chunk_size == 0)
+				chunk_size = dfs->attr.da_chunk_size;
+			else
+				chunk_size = parent->d.chunk_size;
+		}
+
 		/** Get new OID for the file */
 		rc = oid_gen(dfs, cid, true, &file->oid);
 		if (rc != 0)
@@ -803,9 +833,7 @@ open_file(dfs_t *dfs, daos_handle_t th, dfs_obj_t *parent, int flags,
 
 		/** Open the array object for the file */
 		rc = daos_array_open_with_attr(dfs->coh, file->oid, th,
-					       DAOS_OO_RW, 1,
-					       chunk_size ? chunk_size :
-					       dfs->attr.da_chunk_size,
+					       DAOS_OO_RW, 1, chunk_size,
 					       &file->oh, NULL);
 		if (rc != 0) {
 			D_ERROR("daos_array_open_with_attr() failed (%d)\n",
@@ -816,8 +844,7 @@ open_file(dfs_t *dfs, daos_handle_t th, dfs_obj_t *parent, int flags,
 		/** Create and insert entry in parent dir object. */
 		entry->mode = file->mode;
 		entry->atime = entry->mtime = entry->ctime = time(NULL);
-		if (chunk_size)
-			entry->chunk_size = chunk_size;
+		entry->chunk_size = chunk_size;
 
 		rc = insert_entry(parent->oh, th, file->name, len, entry);
 		if (rc == EEXIST && !oexcl) {
@@ -855,12 +882,12 @@ fopen:
 	if (daos_mode == -1)
 		return EINVAL;
 
+	D_ASSERT(entry->chunk_size);
+
 	/** Open the byte array */
 	file->mode = entry->mode;
 	rc = daos_array_open_with_attr(dfs->coh, entry->oid, th, daos_mode, 1,
-				       entry->chunk_size ? entry->chunk_size :
-				       dfs->attr.da_chunk_size, &file->oh,
-				       NULL);
+				       entry->chunk_size, &file->oh, NULL);
 	if (rc != 0) {
 		D_ERROR("daos_array_open_with_attr() failed (%d)\n", rc);
 		return daos_der2errno(rc);
@@ -885,7 +912,6 @@ fopen:
 	}
 
 	oid_cp(&file->oid, entry->oid);
-
 	return 0;
 }
 
@@ -894,10 +920,17 @@ fopen:
  * object first.
  */
 static inline int
-create_dir(dfs_t *dfs, daos_handle_t parent_oh, daos_oclass_id_t cid,
-	   dfs_obj_t *dir)
+create_dir(dfs_t *dfs, dfs_obj_t *parent, daos_oclass_id_t cid, dfs_obj_t *dir)
 {
 	int			rc;
+
+	/** set oclass for dir. order: API, parent dir, cont default */
+	if (cid == 0) {
+		if (parent->d.oclass == 0)
+			cid = dfs->attr.da_oclass_id;
+		else
+			cid = parent->d.oclass;
+	}
 
 	/** Allocate an OID for the dir - local operation */
 	rc = oid_gen(dfs, cid, false, &dir->oid);
@@ -915,25 +948,32 @@ create_dir(dfs_t *dfs, daos_handle_t parent_oh, daos_oclass_id_t cid,
 }
 
 static int
-open_dir(dfs_t *dfs, daos_handle_t th, daos_handle_t parent_oh, int flags,
+open_dir(dfs_t *dfs, daos_handle_t th, dfs_obj_t *parent, int flags,
 	 daos_oclass_id_t cid, struct dfs_entry *entry, size_t len,
 	 dfs_obj_t *dir)
 {
 	bool			exists;
 	int			daos_mode;
+	daos_handle_t		parent_oh;
 	int			rc;
 
+	parent_oh = parent ? parent->oh : dfs->super_oh;
+
 	if (flags & O_CREAT) {
-		rc = create_dir(dfs, parent_oh, cid, dir);
+		D_ASSERT(parent);
+
+		/** this generates the OID and opens the object */
+		rc = create_dir(dfs, parent, cid, dir);
 		if (rc)
 			return rc;
 
 		entry->oid = dir->oid;
 		entry->mode = dir->mode;
 		entry->atime = entry->mtime = entry->ctime = time(NULL);
-		entry->chunk_size = 0;
+		entry->chunk_size = parent->d.chunk_size;
+		entry->oclass = parent->d.oclass;
 
-		rc = insert_entry(parent_oh, th, dir->name, len, entry);
+		rc = insert_entry(parent->oh, th, dir->name, len, entry);
 		if (rc != 0) {
 			daos_obj_close(dir->oh, NULL);
 			D_ERROR("Inserting dir entry %s failed (%d)\n",
@@ -970,14 +1010,16 @@ open_dir(dfs_t *dfs, daos_handle_t th, daos_handle_t parent_oh, int flags,
 	}
 	dir->mode = entry->mode;
 	oid_cp(&dir->oid, entry->oid);
+	dir->d.chunk_size = entry->chunk_size;
+	dir->d.oclass = entry->oclass;
 
 	return 0;
 }
 
 static int
 open_symlink(dfs_t *dfs, daos_handle_t th, dfs_obj_t *parent, int flags,
-	     const char *value, struct dfs_entry *entry, size_t len,
-	     dfs_obj_t *sym)
+	     daos_oclass_id_t cid, const char *value, struct dfs_entry *entry,
+	     size_t len, dfs_obj_t *sym)
 {
 	size_t			value_len;
 	int			rc;
@@ -991,13 +1033,26 @@ open_symlink(dfs_t *dfs, daos_handle_t th, dfs_obj_t *parent, int flags,
 		if (value_len > PATH_MAX - 1)
 			return EINVAL;
 
-		rc = oid_gen(dfs, 0, false, &sym->oid);
+		/** set oclass. order: API, parent dir, cont default */
+		if (cid == 0) {
+			if (parent->d.oclass == 0)
+				cid = dfs->attr.da_oclass_id;
+			else
+				cid = parent->d.oclass;
+		}
+
+		/*
+		 * note that we don't use this object to store anything since
+		 * the value is stored in the inode. This just an identifier for
+		 * the symlink.
+		 */
+		rc = oid_gen(dfs, cid, false, &sym->oid);
 		if (rc != 0)
 			return rc;
+
 		oid_cp(&entry->oid, sym->oid);
 		entry->mode = sym->mode | S_IRWXO | S_IRWXU | S_IRWXG;
 		entry->atime = entry->mtime = entry->ctime = time(NULL);
-		entry->chunk_size = 0;
 		D_STRNDUP(sym->value, value, value_len + 1);
 		if (sym->value == NULL)
 			return ENOMEM;
@@ -1271,6 +1326,7 @@ dfs_cont_create(daos_handle_t poh, uuid_t co_uuid, dfs_attr_t *attr,
 	entry.mode = S_IFDIR | 0755;
 	entry.atime = entry.mtime = entry.ctime = time(NULL);
 	entry.chunk_size = dattr.da_chunk_size;
+	entry.oclass = dattr.da_oclass_id;
 
 	/*
 	 * Since we don't support daos cont create atomicity (2 or more cont
@@ -1416,8 +1472,8 @@ dfs_mount(daos_handle_t poh, daos_handle_t coh, int flags, dfs_t **_dfs)
 
 	/** Check if super object has the root entry */
 	strcpy(dfs->root.name, "/");
-	rc = open_dir(dfs, DAOS_TX_NONE, dfs->super_oh, amode | S_IFDIR, 0,
-		      &root_dir, 1, &dfs->root);
+	rc = open_dir(dfs, DAOS_TX_NONE, NULL, amode | S_IFDIR, 0, &root_dir,
+		      1, &dfs->root);
 	if (rc) {
 		D_ERROR("Failed to open root object (%d)\n", rc);
 		D_GOTO(err_super, rc);
@@ -1754,6 +1810,43 @@ dfs_get_chunk_size(dfs_obj_t *obj, daos_size_t *chunk_size)
 }
 
 int
+dfs_obj_get_info(dfs_obj_t *obj, dfs_obj_info_t *info)
+{
+	int	rc;
+
+	if (obj == NULL || info == NULL)
+		return EINVAL;
+
+	switch (obj->mode & S_IFMT) {
+	case S_IFDIR:
+		info->doi_oclass_id = obj->d.oclass;
+		info->doi_chunk_size = obj->d.chunk_size;
+		break;
+	case S_IFREG:
+	{
+		daos_size_t cell_size;
+
+		rc = daos_array_get_attr(obj->oh, &info->doi_chunk_size,
+					 &cell_size);
+		if (rc)
+			return daos_der2errno(rc);
+
+		info->doi_oclass_id = daos_obj_id2class(obj->oid);
+		break;
+	}
+	case S_IFLNK:
+		info->doi_oclass_id = 0;
+		info->doi_chunk_size = 0;
+		break;
+	default:
+		D_ERROR("Invalid entry type (not a dir, file, symlink).\n");
+		return EINVAL;
+	}
+
+	return 0;
+}
+
+int
 dfs_mkdir(dfs_t *dfs, dfs_obj_t *parent, const char *name, mode_t mode,
 	  daos_oclass_id_t cid)
 {
@@ -1778,14 +1871,15 @@ dfs_mkdir(dfs_t *dfs, dfs_obj_t *parent, const char *name, mode_t mode,
 
 	strncpy(new_dir.name, name, len + 1);
 
-	rc = create_dir(dfs, parent->oh, cid, &new_dir);
+	rc = create_dir(dfs, parent, cid, &new_dir);
 	if (rc)
 		return rc;
 
 	entry.oid = new_dir.oid;
 	entry.mode = S_IFDIR | mode;
 	entry.atime = entry.mtime = entry.ctime = time(NULL);
-	entry.chunk_size = 0;
+	entry.chunk_size = parent->d.chunk_size;
+	entry.oclass = parent->d.oclass;
 
 	rc = insert_entry(parent->oh, th, name, len, &entry);
 	if (rc != 0) {
@@ -2219,8 +2313,11 @@ lookup_rel_path_loop:
 			D_GOTO(err_obj, rc = daos_der2errno(rc));
 		}
 
+		obj->d.chunk_size = entry.chunk_size;
+		obj->d.oclass = entry.oclass;
 		if (stbuf)
 			stbuf->st_size = sizeof(entry);
+
 		oid_cp(&parent.oid, obj->oid);
 		oid_cp(&parent.parent_oid, obj->parent_oid);
 		parent.oh = obj->oh;
@@ -2545,6 +2642,10 @@ dfs_lookup_rel_int(dfs_t *dfs, dfs_obj_t *parent, const char *name, int flags,
 			D_ERROR("daos_obj_open() Failed (%d)\n", rc);
 			D_GOTO(err_obj, rc = daos_der2errno(rc));
 		}
+
+		obj->d.chunk_size = entry.chunk_size;
+		obj->d.oclass = entry.oclass;
+
 		if (stbuf)
 			stbuf->st_size = sizeof(entry);
 		break;
@@ -2662,16 +2763,15 @@ restart:
 		}
 		break;
 	case S_IFDIR:
-		rc = open_dir(dfs, th, parent->oh, flags, cid, &entry, len,
-			      obj);
+		rc = open_dir(dfs, th, parent, flags, cid, &entry, len, obj);
 		if (rc) {
 			D_DEBUG(DB_TRACE, "Failed to open dir (%d)\n", rc);
 			D_GOTO(out, rc);
 		}
 		break;
 	case S_IFLNK:
-		rc = open_symlink(dfs, th, parent, flags, value, &entry, len,
-				  obj);
+		rc = open_symlink(dfs, th, parent, flags, cid, value, &entry,
+				  len, obj);
 		if (rc) {
 			D_DEBUG(DB_TRACE, "Failed to open symlink (%d)\n", rc);
 			D_GOTO(out, rc);

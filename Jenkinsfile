@@ -1009,7 +1009,7 @@ pipeline {
                     }
                     steps {
                         sconsBuild parallel_build: parallel_build(),
-                                   scons_args: scons_faults_args() + " PREFIX=/opt/daos TARGET_TYPE=release",
+                                   scons_args: scons_faults_args() + " PREFIX=/opt/daos TARGET_TYPE=release BUILD_ROOT=/mnt/daos",
                                    build_deps: "no"
                     }
                     post {

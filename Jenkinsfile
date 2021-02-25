@@ -933,6 +933,7 @@ pipeline {
                                                 " -t ${sanitized_JOB_NAME}-centos7 " +
                                                 ' --build-arg QUICKBUILD_DEPS="' +
                                                 quick_build_deps('centos7') + '"'
+			    args '--tmpfs /mnt/daos'
                         }
                     }
                     steps {

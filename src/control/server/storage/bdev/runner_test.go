@@ -3,6 +3,7 @@
 //
 // SPDX-License-Identifier: BSD-2-Clause-Patent
 //
+
 package bdev
 
 import (
@@ -21,8 +22,8 @@ func TestBdevRunnerPrepare(t *testing.T) {
 	const (
 		testNrHugePages  = 42
 		testTargetUser   = "amos"
-		testPciWhitelist = "a,b,c"
-		testPciBlacklist = "x,y,z"
+		testPciAllowList = "a,b,c"
+		testPciBlockList = "x,y,z"
 	)
 
 	for name, tc := range map[string]struct {
@@ -57,14 +58,14 @@ func TestBdevRunnerPrepare(t *testing.T) {
 			req: PrepareRequest{
 				HugePageCount: testNrHugePages,
 				TargetUser:    testTargetUser,
-				PCIWhitelist:  testPciWhitelist,
+				PCIAllowList:  testPciAllowList,
 				DisableVFIO:   true,
 			},
 			expEnv: []string{
 				fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
 				fmt.Sprintf("%s=%d", nrHugepagesEnv, testNrHugePages),
 				fmt.Sprintf("%s=%s", targetUserEnv, testTargetUser),
-				fmt.Sprintf("%s=%s", pciWhiteListEnv, testPciWhitelist),
+				fmt.Sprintf("%s=%s", pciAllowListEnv, testPciAllowList),
 				fmt.Sprintf("%s=%s", driverOverrideEnv, vfioDisabledDriver),
 			},
 		},
@@ -72,14 +73,14 @@ func TestBdevRunnerPrepare(t *testing.T) {
 			req: PrepareRequest{
 				HugePageCount: testNrHugePages,
 				TargetUser:    testTargetUser,
-				PCIBlacklist:  testPciBlacklist,
+				PCIBlockList:  testPciBlockList,
 				DisableVFIO:   true,
 			},
 			expEnv: []string{
 				fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
 				fmt.Sprintf("%s=%d", nrHugepagesEnv, testNrHugePages),
 				fmt.Sprintf("%s=%s", targetUserEnv, testTargetUser),
-				fmt.Sprintf("%s=%s", pciBlackListEnv, testPciBlacklist),
+				fmt.Sprintf("%s=%s", pciBlockListEnv, testPciBlockList),
 				fmt.Sprintf("%s=%s", driverOverrideEnv, vfioDisabledDriver),
 			},
 		},
@@ -87,8 +88,8 @@ func TestBdevRunnerPrepare(t *testing.T) {
 			req: PrepareRequest{
 				HugePageCount: testNrHugePages,
 				TargetUser:    testTargetUser,
-				PCIBlacklist:  testPciBlacklist,
-				PCIWhitelist:  testPciWhitelist,
+				PCIBlockList:  testPciBlockList,
+				PCIAllowList:  testPciAllowList,
 				DisableVFIO:   true,
 			},
 			expErr: errors.New(

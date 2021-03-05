@@ -216,6 +216,30 @@ func NewClassProvider(log logging.Logger, cfgDir string, cfg *storage.BdevConfig
 	return p, nil
 }
 
+//func writeJSONCfg(cfg *storage.BdevConfig, path string) error {
+//	jsonPath := path + ".json"
+//
+//	f, err := os.Create(jsonPathPath)
+//	defer func() {
+//		ce := f.Close()
+//		if err == nil {
+//			err = ce
+//		}
+//	}()
+//	if err != nil {
+//		return errors.Wrapf(err, "spdk: failed to create NVMe config file %s", jsonPathPath)
+//	}
+//	file, err := json.MarshalIndent(cfg, "", " ")
+//	if err != nil {
+//		return err
+//	}
+//	if err := ioutil.WriteFile(jsonPath, file, 0644); err != nil {
+//		return err
+//	}
+//
+//	return nil
+//}
+
 // GenConfigFile generates nvme config file for given bdev type to be consumed
 // by spdk.
 func (p *ClassProvider) GenConfigFile() error {
@@ -254,5 +278,6 @@ func (p *ClassProvider) GenConfigFile() error {
 		return errors.Wrapf(err, "spdk: failed to write NVMe config to file %s", p.cfgPath)
 	}
 
+	//return writeJSONCfg(p.cfg, p.cfgPath)
 	return nil
 }

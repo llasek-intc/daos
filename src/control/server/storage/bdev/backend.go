@@ -271,7 +271,7 @@ func detectVMD() ([]string, error) {
 	vmdCount := bytes.Count(cmdOut.Bytes(), []byte("0000:"))
 	if vmdCount == 0 {
 		// sometimes the output may not include "0000:" prefix
-		// usually when muliple devices are in the PCI_WHITELIST
+		// usually when muliple devices are in the PCI_ALLOWLIST
 		vmdCount = bytes.Count(cmdOut.Bytes(), []byte("Volume"))
 		if vmdCount == 0 {
 			vmdCount = bytes.Count(cmdOut.Bytes(), []byte("201d"))
@@ -327,10 +327,10 @@ func (b *spdkBackend) Prepare(req PrepareRequest) (*PrepareResponse, error) {
 
 	vmdReq := req
 	// If VMD devices are going to be used, then need to run a separate
-	// bdev prepare (SPDK setup) with the VMD address as the PCI_WHITELIST
+	// bdev prepare (SPDK setup) with the VMD address as the PCI_ALLOWLIST
 	//
 	// TODO: ignore devices not in include list
-	vmdReq.PCIWhitelist = strings.Join(vmdDevs, " ")
+	vmdReq.PCIAllowList = strings.Join(vmdDevs, " ")
 
 	if err := b.script.Prepare(vmdReq); err != nil {
 		return nil, errors.Wrap(err, "re-binding vmd ssds to attach with spdk")

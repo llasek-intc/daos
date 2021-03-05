@@ -61,7 +61,7 @@ func (cmd *storagePrepareCmd) Execute(args []string) error {
 		if _, err := cmd.scs.NvmePrepare(bdev.PrepareRequest{
 			HugePageCount: cmd.NrHugepages,
 			TargetUser:    cmd.TargetUser,
-			PCIWhitelist:  cmd.PCIWhiteList,
+			PCIAllowList:  cmd.PCIWhiteList,
 			ResetOnly:     cmd.Reset,
 		}); err != nil {
 			scanErrors = append(scanErrors, err)

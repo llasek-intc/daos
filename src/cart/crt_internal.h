@@ -26,6 +26,7 @@
 #include "crt_self_test.h"
 #include "crt_ctl.h"
 #include "crt_swim.h"
+#include "swim/swim_internal.h"
 
 /* A wrapper around D_TRACE_DEBUG that ensures the ptr option is a RPC */
 #define RPC_TRACE(mask, rpc, fmt, ...)					\

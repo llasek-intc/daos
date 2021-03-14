@@ -269,6 +269,16 @@ crt_context_create(crt_context_t *crt_ctx)
 			crt_context_destroy(ctx, true);
 			D_GOTO(out, rc);
 		}
+
+		if (crt_na_type_is_slow(crt_gdata.cg_na_plugin)) {
+			D_WARN("The provider is slow. "
+				"Therefore increasing timeouts by 10 times.\n");
+			crt_swim_rpc_timeout *= 10;
+			swim_period_set(swim_period_get() * 10);
+			swim_ping_timeout_set(swim_ping_timeout_get() * 10);
+			swim_suspect_timeout_set(swim_suspect_timeout_get() *
+						 10);
+		}
 	}
 
 	*crt_ctx = (crt_context_t)ctx;

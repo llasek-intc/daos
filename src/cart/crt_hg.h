@@ -52,6 +52,14 @@ crt_na_type_is_ofi(int na_type)
 	       (na_type < CRT_NA_OFI_COUNT);
 }
 
+static inline bool
+crt_na_type_is_slow(int na_type)
+{
+	if (na_type == CRT_NA_OFI_SOCKETS || na_type == CRT_NA_OFI_TCP_RXM)
+		return true;
+	return false;
+}
+
 struct crt_na_dict {
 	char	*nad_str;
 	int	nad_type;

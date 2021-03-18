@@ -206,7 +206,7 @@ class ObjectMetadata(TestWithServers):
         Use Cases:
             ?
 
-        :avocado: tags=metadata,metadata_free_space,nvme,large,hw
+        :avocado: tags=all,metadata,metadata_free_space,nvme,large,hw
         :avocado: tags=full_regression
         """
         self.pool.pool.connect(2)
@@ -244,7 +244,7 @@ class ObjectMetadata(TestWithServers):
         Use Cases:
             ?
 
-        :avocado: tags=metadata,metadata_ior,nvme,large
+        :avocado: tags=all,full_regression,metadata,metadata_ior,nvme,large
         """
         files_per_thread = 400
         total_ior_threads = 5
@@ -322,7 +322,7 @@ class ObjectMetadata(TestWithServers):
            Verify container can be successfully deleted when the storage pool
            is full ACL grant/remove modification.
 
-        :avocado: tags=metadata,metadata_der_nospace,nvme,large,hw
+        :avocado: tags=all,metadata,metadata_der_nospace,nvme,large,hw
         :avocado: tags=full_regression,der_nospace
         """
         self.pool.pool.connect(2)

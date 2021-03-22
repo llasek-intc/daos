@@ -14,6 +14,9 @@
 // I.e. for testing library changes
 @Library(value="pipeline-lib@bmurrell/move-functions-from-DAOS-Jenkinsfile") _
 
+// For master, this is just some wildly high number
+next_version = "1000"
+
 // Don't define this as a type or it loses it's global scope
 target_branch = env.CHANGE_TARGET ? env.CHANGE_TARGET : env.BRANCH_NAME
 def sanitized_JOB_NAME = JOB_NAME.toLowerCase().replaceAll('/', '-').replaceAll('%2f', '-')

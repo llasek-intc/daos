@@ -49,18 +49,14 @@ def getuid() {
 
 String get_priority() {
     if (env.BRANCH_NAME == 'master' ||
-        env.BRANCH_NAME.startsWith("release/")) {
+        env.BRANCH_NAME.startsWith("release/") ||
+        env.BRANCH_NAME == 'weekly-testing') {
         string p = '2'
     } else {
         string p = ''
     }
     echo "Build priority set to " + p == '' ? 'default' : p
     return p
-}
-
-String rpm_test_version() {
-    println("rpm_test_version()")
-    return cachedCommitPragma('RPM-test-version')
 }
 
 boolean skip_prebuild() {
@@ -79,7 +75,7 @@ boolean skip_build() {
     return (env.BRANCH_NAME != target_branch) &&
            skipStage(stage: 'build') ||
            docOnlyChange(target_branch) ||
-           rpm_test_version() != ''
+           rpmTestVersion() != ''
 }
 
 boolean skip_build_rpm(String distro) {
@@ -97,7 +93,7 @@ boolean skip_ftest(String distro) {
     return distro == 'ubuntu20' ||
            skipStage(stage: 'func-test') ||
            skipStage(stage: 'func-test-vm') ||
-           ! tests_in_stage('vm') ||
+           ! testsInStage() ||
            skipStage(stage: 'func-test-' + distro)
 }
 
@@ -114,19 +110,12 @@ boolean skip_scan_rpms_centos7() {
            quickFunctional()
 }
 
-boolean tests_in_stage(String size) {
-    return sh(label: "Get test list for ${size}",
-              script: """cd src/tests/ftest
-                         ./list_tests.py """ + parseStageInfo()['test_tag'],
-              returnStatus: true) == 0
-}
-
 boolean skip_ftest_hw(String size) {
     return env.DAOS_STACK_CI_HARDWARE_SKIP == 'true' ||
+           skipStage(stage: 'func-test') ||
            skipStage(stage: 'func-hw-test') ||
-           skipStage(stage: 'func-hw-test')
            skipStage(stage: 'func-hw-test-' + size) ||
-           ! tests_in_stage(size) ||
+           ! testsInStage() ||
            (env.BRANCH_NAME == 'master' && ! startedByTimer())
 }
 
@@ -183,7 +172,7 @@ boolean skip_build_on_leap15_icc() {
 boolean skip_unit_testing_stage() {
     return  env.NO_CI_TESTING == 'true' ||
             (skipStage(stage: 'build') &&
-             rpm_test_version() == '') ||
+             rpmTestVersion() == '') ||
             docOnlyChange(target_branch) ||
             skip_build_on_centos7_gcc() ||
             skipStage(stage: 'unit-tests')
@@ -212,9 +201,12 @@ boolean skip_if_unstable() {
 boolean skip_testing_stage() {
     return  env.NO_CI_TESTING == 'true' ||
             (skipStage(stage: 'build') &&
-             rpm_test_version() == '') ||
+             rpmTestVersion() == '') ||
             docOnlyChange(target_branch) ||
             skipStage(stage: 'test') ||
+            (env.BRANCH_NAME.startsWith('weekly-testing') &&
+             ! startedByTimer() &&
+             ! startedByUser()) ||
             skip_if_unstable()
 }
 
@@ -262,7 +254,7 @@ pipeline {
     triggers {
         cron(env.BRANCH_NAME == 'master' ? 'TZ=America/Toronto\n0 0 * * *\n' : '' +
              env.BRANCH_NAME == 'release/1.2' ? 'TZ=America/Toronto\n0 12 * * *\n' : '' +
-             env.BRANCH_NAME == 'weekly-testing' ? 'H 0 * * 6' : '')
+             env.BRANCH_NAME.startsWith('weekly-testing') ? 'H 0 * * 6' : '')
     }
 
     environment {
@@ -285,9 +277,20 @@ pipeline {
         string(name: 'BuildPriority',
                defaultValue: get_priority(),
                description: 'Priority of this build.  DO NOT USE WITHOUT PERMISSION.')
+        string(name: 'TestTag',
+               defaultValue: "daily_regression",
+               description: 'Test-tag to use for this run')
     }
 
     stages {
+        stage('Get Commit Message') {
+            steps {
+                script {
+                    env.COMMIT_MESSAGE = sh(script: 'git show -s --format=%B',
+                                            returnStdout: true).trim()
+                }
+            }
+        }
         stage('Cancel Previous Builds') {
             when { changeRequest() }
             steps {

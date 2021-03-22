@@ -190,6 +190,7 @@ struct migrate_pool_tls {
 	uuid_t			mpt_poh_uuid;
 	uuid_t			mpt_coh_uuid;
 	daos_handle_t		mpt_pool_hdl;
+	daos_handle_t		mpt_cont_hdl;
 
 	/* Container/objects to be migrated will be attached to the tree */
 	daos_handle_t		mpt_root_hdl;

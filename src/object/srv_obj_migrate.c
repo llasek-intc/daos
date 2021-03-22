@@ -75,7 +75,6 @@ struct iter_cont_arg {
 	uuid_t			pool_hdl_uuid;
 	uuid_t			cont_uuid;
 	uuid_t			cont_hdl_uuid;
-	daos_handle_t		cont_hdl;
 	struct tree_cache_root	*cont_root;
 	unsigned int		yield_freq;
 	unsigned int		obj_cnt;
@@ -292,6 +291,12 @@ migrate_pool_tls_destroy(struct migrate_pool_tls *tls)
 	if (tls->mpt_pool)
 		ds_pool_child_put(tls->mpt_pool);
 
+	if (daos_handle_is_valid(tls->mpt_pool_hdl)) {
+		if (daos_handle_is_valid(tls->mpt_cont_hdl))
+			dsc_cont_close(tls->mpt_pool_hdl, tls->mpt_cont_hdl);
+		dsc_pool_close(tls->mpt_pool_hdl);
+	}
+
 	if (tls->mpt_svc_list.rl_ranks)
 		D_FREE(tls->mpt_svc_list.rl_ranks);
 
@@ -395,6 +400,7 @@ migrate_pool_tls_create_one(void *data)
 	uuid_copy(pool_tls->mpt_coh_uuid, arg->co_hdl_uuid);
 	pool_tls->mpt_version = arg->version;
 	pool_tls->mpt_pool_hdl = DAOS_HDL_INVAL;
+	pool_tls->mpt_cont_hdl = DAOS_HDL_INVAL;
 	pool_tls->mpt_rec_count = 0;
 	pool_tls->mpt_obj_count = 0;
 	pool_tls->mpt_size = 0;
@@ -413,7 +419,7 @@ migrate_pool_tls_create_one(void *data)
 		D_GOTO(out, rc);
 
 	D_DEBUG(DB_REBUILD, "TLS %p create for "DF_UUID" "DF_UUID"/"DF_UUID
-		"ver %d rc %d\n", pool_tls, DP_UUID(pool_tls->mpt_pool_uuid),
+		" ver %d rc %d\n", pool_tls, DP_UUID(pool_tls->mpt_pool_uuid),
 		DP_UUID(arg->pool_hdl_uuid), DP_UUID(arg->co_hdl_uuid),
 		arg->version, rc);
 	d_list_add(&pool_tls->mpt_list, &tls->ot_pool_list);
@@ -2405,7 +2411,7 @@ migrate_one_object(daos_unit_oid_t oid, daos_epoch_t eph, unsigned int shard,
 	obj_arg->epoch = eph;
 	obj_arg->shard = shard;
 	obj_arg->tgt_idx = tgt_idx;
-	obj_arg->cont_hdl = cont_arg->cont_hdl;
+	obj_arg->cont_hdl = cont_arg->pool_tls->mpt_cont_hdl;
 	uuid_copy(obj_arg->pool_uuid, cont_arg->pool_tls->mpt_pool_uuid);
 	uuid_copy(obj_arg->cont_uuid, cont_arg->cont_uuid);
 	obj_arg->version = cont_arg->pool_tls->mpt_version;
@@ -2541,7 +2547,6 @@ migrate_cont_iter_cb(daos_handle_t ih, d_iov_t *key_iov,
 	int			snap_cnt;
 	d_iov_t			tmp_iov;
 	int			rc;
-	int			rc1;
 
 	uuid_copy(cont_uuid, *(uuid_t *)key_iov->iov_buf);
 	D_DEBUG(DB_REBUILD, "iter cont "DF_UUID"/%"PRIx64" %"PRIx64" start\n",
@@ -2574,6 +2579,10 @@ migrate_cont_iter_cb(daos_handle_t ih, d_iov_t *key_iov,
 	 * Open the remote container as a *client* to be used later to pull
 	 * objects
 	 */
+	if (daos_handle_is_valid(tls->mpt_cont_hdl))
+		dsc_cont_close(tls->mpt_pool_hdl, tls->mpt_cont_hdl);
+	tls->mpt_cont_hdl = DAOS_HDL_INVAL;
+
 	rc = dsc_cont_open(tls->mpt_pool_hdl, cont_uuid, tls->mpt_coh_uuid,
 			   0, &coh);
 	if (rc) {
@@ -2581,7 +2590,8 @@ migrate_cont_iter_cb(daos_handle_t ih, d_iov_t *key_iov,
 		D_GOTO(free, rc);
 	}
 
-	arg.cont_hdl	= coh;
+	tls->mpt_cont_hdl = coh;
+
 	arg.yield_freq	= DEFAULT_YIELD_FREQ;
 	arg.obj_cnt	= root->count;
 	arg.cont_root	= root;
@@ -2626,10 +2636,6 @@ migrate_cont_iter_cb(daos_handle_t ih, d_iov_t *key_iov,
 		if (rc || tls->mpt_fini)
 			break;
 	}
-
-	rc1 = dsc_cont_close(tls->mpt_pool_hdl, coh);
-	if (rc1 != 0 || rc != 0)
-		D_GOTO(free, rc = rc ? rc : rc1);
 
 	D_DEBUG(DB_REBUILD, "iter cont "DF_UUID"/%"PRIx64" finish.\n",
 		DP_UUID(cont_uuid), ih.cookie);

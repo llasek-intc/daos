@@ -9,7 +9,8 @@ from __future__ import print_function
 
 import sys
 
-from apricot       import TestWithoutServers
+from apricot import TestWithoutServers
+from apricot import skipForTicket
 
 sys.path.append('./util')
 
@@ -17,12 +18,14 @@ sys.path.append('./util')
 # pylint: disable=wrong-import-position
 from cart_utils import CartUtils
 
+
 class CartCoRpcOneNodeTest(TestWithoutServers):
     """
     Runs CaRT ghost rank RPC test
 
     :avocado: recursive
     """
+
     def setUp(self):
         """ Test setup """
         print("Running setup\n")
@@ -35,6 +38,7 @@ class CartCoRpcOneNodeTest(TestWithoutServers):
         self._teardown_errors.extend(self.utils.cleanup_processes())
         super(CartCoRpcOneNodeTest, self).tearDown()
 
+    @skipForTicket("DAOS-7077")
     def test_cart_ghost_rank_rpc(self):
         """
         Test ghost rank RPC

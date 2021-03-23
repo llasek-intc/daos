@@ -1077,7 +1077,7 @@ pipeline {
                     }
                     steps {
                         functionalTest inst_repos: daosRepos(),
-                                       inst_rpms: functionalPackages(1),
+                                       inst_rpms: functionalPackages(1, next_version),
                                        test_function: 'runTestFunctionalV2'
                     }
                     post {
@@ -1096,7 +1096,7 @@ pipeline {
                     }
                     steps {
                         functionalTest inst_repos: daosRepos(),
-                                       inst_rpms: functionalPackages(1),
+                                       inst_rpms: functionalPackages(1, next_version),
                                        test_function: 'runTestFunctionalV2'
                     }
                     post {
@@ -1115,7 +1115,7 @@ pipeline {
                     }
                     steps {
                         functionalTest inst_repos: daosRepos(),
-                                       inst_rpms: functionalPackages(1),
+                                       inst_rpms: functionalPackages(1, next_version),
                                        test_function: 'runTestFunctionalV2'
                     }
                     post {
@@ -1177,7 +1177,7 @@ pipeline {
                     }
                     steps {
                         functionalTest inst_repos: daosRepos(),
-                                       inst_rpms: functionalPackages(1),
+                                       inst_rpms: functionalPackages(1, next_version),
                                        test_function: 'runTestFunctionalV2'
                     }
                     post {
@@ -1198,7 +1198,7 @@ pipeline {
                     steps {
                         functionalTest target: hwDistroTarget(),
                                        inst_repos: daosRepos(),
-                                       inst_rpms: functionalPackages(1),
+                                       inst_rpms: functionalPackages(1, next_version),
                                        test_function: 'runTestFunctionalV2'
                    }
                     post {
@@ -1219,7 +1219,7 @@ pipeline {
                     steps {
                         functionalTest target: hwDistroTarget(),
                                        inst_repos: daosRepos(),
-                                       inst_rpms: functionalPackages(1),
+                                       inst_rpms: functionalPackages(1, next_version),
                                        test_function: 'runTestFunctionalV2'
                     }
                     post {

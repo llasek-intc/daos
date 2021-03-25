@@ -1133,7 +1133,7 @@ pipeline {
                         label 'ci_vm1'
                     }
                     steps {
-                        testRpm inst_repos: daos_repos(),
+                        testRpm inst_repos: daosRepos(),
                                 daos_pkg_version: daos_packages_version()
                    }
                 } // stage('Test CentOS 7 RPMs')
@@ -1146,7 +1146,7 @@ pipeline {
                         label 'ci_vm1'
                     }
                     steps {
-                        scanRpms inst_repos: daos_repos(),
+                        scanRpms inst_repos: daosRepos(),
                                  daos_pkg_version: daos_packages_version(),
                                  inst_rpms: 'clamav clamav-devel',
                                  test_script: 'ci/rpm/scan_daos.sh',

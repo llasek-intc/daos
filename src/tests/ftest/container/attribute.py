@@ -182,6 +182,7 @@ class ContainerAttributeTest(TestWithServers):
                 break
         try:
             self.container.container.set_attr(data=attr_dict)
+
             # Workaround
             # Due to DAOS-7093 skip the usage of pydaos cont list attr
             # size, buf = self.container.container.list_attr()

@@ -1134,7 +1134,7 @@ pipeline {
                     }
                     steps {
                         testRpm inst_repos: daosRepos(),
-                                daos_pkg_version: daos_packages_version()
+                                daos_pkg_version: daosPackagesVersion()
                    }
                 } // stage('Test CentOS 7 RPMs')
                 stage('Scan CentOS 7 RPMs') {
@@ -1147,7 +1147,7 @@ pipeline {
                     }
                     steps {
                         scanRpms inst_repos: daosRepos(),
-                                 daos_pkg_version: daos_packages_version(),
+                                 daos_pkg_version: daosPackagesVersion(),
                                  inst_rpms: 'clamav clamav-devel',
                                  test_script: 'ci/rpm/scan_daos.sh',
                                  junit_files: 'maldetect.xml'

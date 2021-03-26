@@ -6,7 +6,7 @@
 """
 
 
-
+import time
 from apricot import skipForTicket
 from avocado.core.exceptions import TestFail
 from pool_test_base import PoolTestBase
@@ -22,7 +22,6 @@ class DmgSystemReformatTest(PoolTestBase):
     :avocado: recursive
     """
 
-    @skipForTicket("DAOS-6004")
     def test_dmg_system_reformat(self):
         """
         JIRA ID: DAOS-5415
@@ -60,11 +59,24 @@ class DmgSystemReformatTest(PoolTestBase):
         # self.assertTrue(
         #     self.server_managers[-1].dmg.set_config_value("hostlist", None))
 
-        self.log.info("Perform dmg storage format on all system ranks:")
-        self.get_dmg_command().storage_format(reformat=True)
+        self.log.info("Stopping system prior to erase:")
+        self.get_dmg_command().system_stop(force=True)
         if self.get_dmg_command().result.exit_status != 0:
-            self.fail("Issues performing storage format --reformat: {}".format(
+            self.fail("Issues performing system stop --force: {}".format(
                 self.get_dmg_command().result.stderr_text))
+
+        self.log.info("Erasing system:")
+        self.get_dmg_command().system_erase()
+        if self.get_dmg_command().result.exit_status != 0:
+            self.fail("Issues performing system erase: {}".format(
+                self.get_dmg_command().result.stderr_text))
+
+        self.log.info("Perform dmg storage format on all system ranks:")
+        while True:
+            self.get_dmg_command().storage_format(force=True)
+            if self.get_dmg_command().result.exit_status == 0:
+                break
+            time.sleep(0.5)
 
         # Check that engine starts up again
         self.log.info("<SERVER> Waiting for the engines to start")

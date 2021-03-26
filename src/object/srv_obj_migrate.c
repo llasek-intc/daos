@@ -2371,7 +2371,8 @@ migrate_obj_ult(void *data)
 	rc = migrate_one_epoch_object(oh, &epr, tls, arg);
 
 close:
-	dsc_obj_close(oh);
+	/* FIXME: should keep this handle open until all ULTs complete:
+	dsc_obj_close(oh);*/
 free:
 	if (arg->epoch == DAOS_EPOCH_MAX)
 		tls->mpt_obj_count++;

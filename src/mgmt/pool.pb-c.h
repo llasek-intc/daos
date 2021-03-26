@@ -128,10 +128,14 @@ struct  _Mgmt__PoolCreateReq
    */
   size_t n_nvmebytes;
   uint64_t *nvmebytes;
+  /*
+   * tier placement policy (manual config)
+   */
+  char *policy;
 };
 #define MGMT__POOL_CREATE_REQ__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&mgmt__pool_create_req__descriptor) \
-    , (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, 0,NULL, 0,NULL, 0, 0, 0, 0, 0,NULL, 0, 0,NULL }
+    , (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, 0,NULL, 0,NULL, 0, 0, 0, 0, 0,NULL, 0, 0,NULL, (char *)protobuf_c_empty_string }
 
 
 /*
@@ -163,10 +167,11 @@ struct  _Mgmt__PoolCreateResp
    */
   size_t n_nvme_bytes;
   uint64_t *nvme_bytes;
+  char *policy;
 };
 #define MGMT__POOL_CREATE_RESP__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&mgmt__pool_create_resp__descriptor) \
-    , 0, 0,NULL, 0,NULL, 0, 0,NULL }
+    , 0, 0,NULL, 0,NULL, 0, 0,NULL, (char *)protobuf_c_empty_string }
 
 
 /*
@@ -727,10 +732,14 @@ struct  _Mgmt__PoolQueryResp
    * current raft leader
    */
   uint32_t leader;
+  /*
+   * current policy
+   */
+  char *policy;
 };
 #define MGMT__POOL_QUERY_RESP__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&mgmt__pool_query_resp__descriptor) \
-    , 0, (char *)protobuf_c_empty_string, 0, 0, 0, NULL, NULL, NULL, 0, 0, 0 }
+    , 0, (char *)protobuf_c_empty_string, 0, 0, 0, NULL, NULL, NULL, 0, 0, 0, (char *)protobuf_c_empty_string }
 
 
 typedef enum {

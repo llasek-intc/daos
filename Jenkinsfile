@@ -41,188 +41,6 @@ def getuid() {
     return cached_uid
 }
 
-// Default priority is 3, lower is better.
-// The parameter for a job is set using the script/Jenkinsfile from the
-// previous build of that job, so the first build of any PR will always
-// run at default because Jenkins sees it as a new job, but subsequent
-// ones will use the value from here.
-// The advantage therefore is not to change the priority of PRs, but to
-// change the master branch itself to run at lower priority, resulting
-// in faster time-to-result for PRs.
-
-String get_priority() {
-    if (env.BRANCH_NAME == 'master' ||
-        env.BRANCH_NAME.startsWith("release/") ||
-        env.BRANCH_NAME == 'weekly-testing') {
-        string p = '2'
-    } else {
-        string p = ''
-    }
-    echo "Build priority set to " + p == '' ? 'default' : p
-    return p
-}
-
-boolean skip_prebuild() {
-    return target_branch == 'weekly-testing'
-}
-
-boolean skip_checkpatch() {
-    return skipStage(stage: 'checkpatch') ||
-           docOnlyChange(target_branch) ||
-           quickFunctional()
-}
-
-boolean skip_build() {
-    // always build branch landings as we depend on lastSuccessfulBuild
-    // always having RPMs in it
-    return (env.BRANCH_NAME != target_branch) &&
-           skipStage(stage: 'build') ||
-           docOnlyChange(target_branch) ||
-           rpmTestVersion() != ''
-}
-
-boolean skip_build_rpm(String distro) {
-    return target_branch == 'weekly-testing' ||
-           skipStage(stage: 'build-' + distro + '-rpm') ||
-           distro == 'ubuntu20' && quickFunctional()
-}
-
-boolean skip_build_on_centos7_gcc() {
-    return skipStage(stage: 'build-centos7-gcc') ||
-           quickFunctional()
-}
-
-boolean skip_ftest(String distro) {
-    return distro == 'ubuntu20' ||
-           skipStage(stage: 'func-test') ||
-           skipStage(stage: 'func-test-vm') ||
-           ! testsInStage() ||
-           skipStage(stage: 'func-test-' + distro)
-}
-
-boolean skip_test_rpms_centos7() {
-    return target_branch == 'weekly-testing' ||
-           skipStage(stage: 'test') ||
-           skipStage(stage: 'test-centos-rpms') ||
-           quickFunctional()
-}
-
-boolean skip_scan_rpms_centos7() {
-    return target_branch == 'weekly-testing' ||
-           skipStage(stage: 'scan-centos-rpms', def_val: true) ||
-           quickFunctional()
-}
-
-boolean skip_ftest_hw(String size) {
-    return env.DAOS_STACK_CI_HARDWARE_SKIP == 'true' ||
-           skipStage(stage: 'func-test') ||
-           skipStage(stage: 'func-hw-test') ||
-           skipStage(stage: 'func-hw-test-' + size) ||
-           ! testsInStage() ||
-           (env.BRANCH_NAME == 'master' && ! startedByTimer())
-}
-
-boolean skip_bandit_check() {
-    return cachedCommitPragma(pragma: 'Skip-python-bandit',
-                              def_val: 'true') == 'true' ||
-           quickFunctional()
-}
-
-boolean skip_build_on_centos7_bullseye() {
-    return  env.NO_CI_TESTING == 'true' ||
-            skipStage(stage: 'bullseye', def_val: true) ||
-            quickFunctional()
-}
-
-boolean skip_build_on_centos7_gcc_debug() {
-    return skipStage(stage: 'build-centos7-gcc-debug') ||
-           quickBuild()
-}
-
-boolean skip_build_on_centos7_gcc_release() {
-    return skipStage(stage: 'build-centos7-gcc-release') ||
-           quickBuild()
-}
-
-boolean skip_build_on_centos8_gcc_dev() {
-    return skipStage(stage: 'build-centos8-gcc-dev') ||
-           quickBuild()
-}
-
-boolean skip_build_on_landing_branch() {
-    return env.BRANCH_NAME != target_branch ||
-           quickBuild()
-}
-
-boolean skip_build_on_ubuntu_clang() {
-    return target_branch == 'weekly-testing' ||
-           skipStage(stage: 'build-ubuntu-clang') ||
-           quickBuild()
-
-}
-
-boolean skip_build_on_leap15_gcc() {
-    return skipStage(stage: 'build-leap15-gcc') ||
-            quickBuild()
-}
-
-boolean skip_build_on_leap15_icc() {
-    return target_branch == 'weekly-testing' ||
-           skipStage(stage: 'build-leap15-icc') ||
-           quickBuild()
-}
-
-boolean skip_unit_testing_stage() {
-    return  env.NO_CI_TESTING == 'true' ||
-            (skipStage(stage: 'build') &&
-             rpmTestVersion() == '') ||
-            docOnlyChange(target_branch) ||
-            skip_build_on_centos7_gcc() ||
-            skipStage(stage: 'unit-tests')
-}
-
-boolean skip_coverity() {
-    return skipStage(stage: 'coverity-test') ||
-           quickFunctional() ||
-           skipStage(stage: 'build')
-}
-
-boolean skip_if_unstable() {
-    if (cachedCommitPragma(pragma: 'Allow-unstable-test') == 'true' ||
-        env.BRANCH_NAME == 'master' ||
-        env.BRANCH_NAME.startsWith("weekly-testing") ||
-        env.BRANCH_NAME.startsWith("release/")) {
-        return false
-    }
-
-    //Ok, it's a PR and the Allow pragma isn't set.  Skip if the build is
-    //unstable.
-
-    return currentBuild.currentResult == 'UNSTABLE'
-}
-
-boolean skip_testing_stage() {
-    return  env.NO_CI_TESTING == 'true' ||
-            (skipStage(stage: 'build') &&
-             rpmTestVersion() == '') ||
-            docOnlyChange(target_branch) ||
-            skipStage(stage: 'test') ||
-            (env.BRANCH_NAME.startsWith('weekly-testing') &&
-             ! startedByTimer() &&
-             ! startedByUser()) ||
-            skip_if_unstable()
-}
-
-boolean skip_unit_test() {
-    return skipStage(stage: 'unit-test') ||
-           skipStage(stage: 'run_test')
-}
-
-boolean skip_bullseye_report() {
-    return env.BULLSEYE == null ||
-           skipStage(stage: 'bullseye', def_val: true)
-}
-
 // Reply with an empty string if quickBuild disabled to avoid discarding
 // docker caches.
 String quick_build_deps(String distro, always=false) {
@@ -278,7 +96,7 @@ pipeline {
 
     parameters {
         string(name: 'BuildPriority',
-               defaultValue: get_priority(),
+               defaultValue: getPriority(),
                description: 'Priority of this build.  DO NOT USE WITHOUT PERMISSION.')
         string(name: 'TestTag',
                defaultValue: "daily_regression",
@@ -303,13 +121,13 @@ pipeline {
         stage('Pre-build') {
             when {
                 beforeAgent true
-                expression { ! skip_prebuild() }
+                expression { ! skipStage() }
             }
             parallel {
                 stage('checkpatch') {
                     when {
                         beforeAgent true
-                        expression { ! skip_checkpatch() }
+                        expression { ! skipStage() }
                     }
                     agent {
                         dockerfile {
@@ -375,7 +193,7 @@ pipeline {
                 stage('Python Bandit check') {
                     when {
                       beforeAgent true
-                      expression { ! skip_bandit_check() }
+                      expression { ! skipStage() }
                     }
                     agent {
                         dockerfile {
@@ -407,7 +225,7 @@ pipeline {
             //failFast true
             when {
                 beforeAgent true
-                expression { ! skip_build() }
+                expression { ! skipStage() }
             }
             parallel {
                 stage('Build RPM on CentOS 7') {
@@ -444,7 +262,7 @@ pipeline {
                 stage('Build RPM on Leap 15') {
                     when {
                         beforeAgent true
-                        expression { ! skip_build_rpm('leap15') }
+                        expression { ! skipStage() }
                     }
                     agent {
                         dockerfile {
@@ -479,7 +297,7 @@ pipeline {
                 stage('Build DEB on Ubuntu 20.04') {
                     when {
                         beforeAgent true
-                        expression { ! skip_build_rpm('ubuntu20') }
+                        expression { ! skipStage() }
                     }
                     agent {
                         dockerfile {
@@ -515,7 +333,7 @@ pipeline {
                 stage('Build on CentOS 7') {
                     when {
                         beforeAgent true
-                        expression { ! skip_build_on_centos7_gcc() }
+                        expression { ! skipStage() }
                     }
                     agent {
                         dockerfile {
@@ -553,7 +371,7 @@ pipeline {
                 stage('Build on CentOS 7 Bullseye') {
                     when {
                         beforeAgent true
-                        expression { ! skip_build_on_centos7_bullseye() }
+                        expression { ! skipStage() }
                     }
                     agent {
                         dockerfile {
@@ -592,7 +410,7 @@ pipeline {
                 stage('Build on CentOS 7 debug') {
                     when {
                         beforeAgent true
-                        expression { ! skip_build_on_centos7_gcc_debug() }
+                        expression { ! skipStage() }
                     }
                     agent {
                         dockerfile {
@@ -631,7 +449,7 @@ pipeline {
                 stage('Build on CentOS 7 release') {
                     when {
                         beforeAgent true
-                        expression { ! skip_build_on_centos7_gcc_release() }
+                        expression { ! skipStage() }
                     }
                     agent {
                         dockerfile {
@@ -670,7 +488,7 @@ pipeline {
                 stage('Build on CentOS 7 with Clang') {
                     when {
                         beforeAgent true
-                        expression { ! skip_build_on_landing_branch() }
+                        expression { ! skipStage() }
                     }
                     agent {
                         dockerfile {
@@ -708,7 +526,7 @@ pipeline {
                 stage('Build on CentOS 8') {
                     when {
                         beforeAgent true
-                        expression { ! skip_build_on_centos8_gcc_dev() }
+                        expression { ! skipStage() }
                      }
                     agent {
                         dockerfile {
@@ -744,7 +562,7 @@ pipeline {
                 stage('Build on Ubuntu 20.04') {
                     when {
                         beforeAgent true
-                        expression { ! skip_build_on_landing_branch() }
+                        expression { ! skipStage() }
                     }
                     agent {
                         dockerfile {
@@ -778,7 +596,7 @@ pipeline {
                 stage('Build on Ubuntu 20.04 with Clang') {
                     when {
                         beforeAgent true
-                        expression { ! skip_build_on_ubuntu_clang() }
+                        expression { ! skipStage() }
                     }
                     agent {
                         dockerfile {
@@ -812,7 +630,7 @@ pipeline {
                 stage('Build on Leap 15') {
                     when {
                         beforeAgent true
-                        expression { ! skip_build_on_leap15_gcc() }
+                        expression { ! skipStage() }
                     }
                     agent {
                         dockerfile {
@@ -849,7 +667,7 @@ pipeline {
                 stage('Build on Leap 15 with Clang') {
                     when {
                         beforeAgent true
-                        expression { ! skip_build_on_landing_branch() }
+                        expression { ! skipStage() }
                     }
                     agent {
                         dockerfile {
@@ -883,7 +701,7 @@ pipeline {
                 stage('Build on Leap 15 with Intel-C and TARGET_PREFIX') {
                     when {
                         beforeAgent true
-                        expression { ! skip_build_on_leap15_icc() }
+                        expression { ! skipStage() }
                     }
                     agent {
                         dockerfile {
@@ -920,13 +738,13 @@ pipeline {
         stage('Unit Tests') {
             when {
                 beforeAgent true
-                expression { ! skip_unit_testing_stage() }
+                expression { ! skipStage() }
             }
             parallel {
                 stage('Unit Test') {
                     when {
                       beforeAgent true
-                      expression { ! skip_unit_test() }
+                      expression { ! skipStage() }
                     }
                     agent {
                         label 'ci_vm1'
@@ -1034,13 +852,13 @@ pipeline {
         stage('Test') {
             when {
                 beforeAgent true
-                expression { ! skip_testing_stage() }
+                expression { ! skipStage() }
             }
             parallel {
                 stage('Coverity on CentOS 7') {
                     when {
                         beforeAgent true
-                        expression { ! skip_coverity() }
+                        expression { ! skipStage() }
                     }
                     agent {
                         dockerfile {
@@ -1070,7 +888,7 @@ pipeline {
                 stage('Functional on CentOS 7') {
                     when {
                         beforeAgent true
-                        expression { ! skip_ftest('el7') }
+                        expression { ! skipStage() }
                     }
                     agent {
                         label 'stage_vm9'
@@ -1089,7 +907,7 @@ pipeline {
                 stage('Functional on Leap 15') {
                     when {
                         beforeAgent true
-                        expression { ! skip_ftest('leap15') }
+                        expression { ! skipStage() }
                     }
                     agent {
                         label 'stage_vm9'
@@ -1108,7 +926,7 @@ pipeline {
                 stage('Functional on Ubuntu 20.04') {
                     when {
                         beforeAgent true
-                        expression { ! skip_ftest('ubuntu20') }
+                        expression { ! skipStage() }
                     }
                     agent {
                         label 'ci_vm9'
@@ -1127,7 +945,7 @@ pipeline {
                 stage('Test CentOS 7 RPMs') {
                     when {
                         beforeAgent true
-                        expression { ! skip_test_rpms_centos7() }
+                        expression { ! skipStage() }
                     }
                     agent {
                         label 'ci_vm1'
@@ -1140,7 +958,7 @@ pipeline {
                 stage('Scan CentOS 7 RPMs') {
                     when {
                         beforeAgent true
-                        expression { ! skip_scan_rpms_centos7() }
+                        expression { ! skipStage() }
                     }
                     agent {
                         label 'ci_vm1'
@@ -1163,13 +981,13 @@ pipeline {
         stage('Test Hardware') {
             when {
                 beforeAgent true
-                expression { ! skip_testing_stage() }
+                expression { ! skipStage() }
             }
             parallel {
-                stage('Functional_Hardware_Small') {
+                stage('Functional Hardware Small') {
                     when {
                         beforeAgent true
-                        expression { ! skip_ftest_hw('small') }
+                        expression { ! skipStage() }
                     }
                     agent {
                         // 2 node cluster with 1 IB/node + 1 test control node
@@ -1186,10 +1004,10 @@ pipeline {
                         }
                     }
                 } // stage('Functional_Hardware_Small')
-                stage('Functional_Hardware_Medium') {
+                stage('Functional Hardware Medium') {
                     when {
                         beforeAgent true
-                        expression { ! skip_ftest_hw('medium') }
+                        expression { ! skipStage() }
                     }
                     agent {
                         // 4 node cluster with 2 IB/node + 1 test control node
@@ -1207,10 +1025,10 @@ pipeline {
                         }
                     }
                 } // stage('Functional_Hardware_Medium')
-                stage('Functional_Hardware_Large') {
+                stage('Functional Hardware Large') {
                     when {
                         beforeAgent true
-                        expression { ! skip_ftest_hw('large') }
+                        expression { ! skipStage() }
                     }
                     agent {
                         // 8+ node cluster with 1 IB/node + 1 test control node
@@ -1235,7 +1053,7 @@ pipeline {
                 stage('Bullseye Report') {
                     when {
                       beforeAgent true
-                      expression { ! skip_bullseye_report() }
+                      expression { ! skipStage() }
                     }
                     agent {
                         dockerfile {

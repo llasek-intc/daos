@@ -85,6 +85,7 @@ func PrintPoolCreateResponse(pcr *control.PoolCreateResp, out io.Writer, opts ..
 		{"Total Size": humanize.Bytes((pcr.ScmBytes + nvmeBytes) * numRanks)},
 		{"SCM": fmt.Sprintf("%s (%s / rank)", humanize.Bytes(pcr.ScmBytes*numRanks), humanize.Bytes(pcr.ScmBytes))},
 		{"NVMe": fmt.Sprintf("%s (%s / rank)", humanize.Bytes(nvmeBytes*numRanks), humanize.Bytes(nvmeBytes))},
+		{"Policy": pcr.Policy},
 	}))
 
 	return err

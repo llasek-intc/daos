@@ -2580,10 +2580,6 @@ migrate_cont_iter_cb(daos_handle_t ih, d_iov_t *key_iov,
 	 * Open the remote container as a *client* to be used later to pull
 	 * objects
 	 */
-	if (daos_handle_is_valid(tls->mpt_cont_hdl))
-		dsc_cont_close(tls->mpt_pool_hdl, tls->mpt_cont_hdl);
-	tls->mpt_cont_hdl = DAOS_HDL_INVAL;
-
 	rc = dsc_cont_open(tls->mpt_pool_hdl, cont_uuid, tls->mpt_coh_uuid,
 			   0, &coh);
 	if (rc) {

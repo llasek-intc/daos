@@ -763,7 +763,7 @@ pipeline {
                 stage('NLT') {
                     when {
                       beforeAgent true
-                      expression { ! skipStage(stage: 'nlt') }
+                      expression { ! skipStage() }
                     }
                     agent {
                         label 'ci_nlt_1'
@@ -802,7 +802,7 @@ pipeline {
                 stage('Unit Test Bullseye') {
                     when {
                       beforeAgent true
-                      expression { ! skipStage(stage: 'bullseye', def_val: true) }
+                      expression { ! skipStage() }
                     }
                     agent {
                         label 'ci_vm1'
@@ -828,7 +828,7 @@ pipeline {
                 stage('Unit Test with memcheck') {
                     when {
                       beforeAgent true
-                      expression { ! skipStage(stage: 'unit-test-memcheck') }
+                      expression { ! skipStage() }
                     }
                     agent {
                         label 'ci_vm1'

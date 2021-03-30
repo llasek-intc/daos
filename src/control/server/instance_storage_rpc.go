@@ -78,39 +78,39 @@ func (ei *EngineInstance) scmFormat(reformat bool) (*ctlpb.ScmMountResult, error
 
 func (ei *EngineInstance) bdevFormat(p *bdev.Provider) (results proto.NvmeControllerResults) {
 	engineIdx := ei.Index()
-	cfg := ei.bdevConfig()
-	results = make(proto.NvmeControllerResults, 0, len(cfg.DeviceList))
-
-	// A config with SCM and no block devices is valid.
-	if len(cfg.DeviceList) == 0 {
-		return
-	}
-
-	ei.log.Infof("Instance %d: starting format of %s block devices %v",
-		engineIdx, cfg.Class, cfg.DeviceList)
-
-	res, err := p.Format(bdev.FormatRequest{
-		Class:      cfg.Class,
-		DeviceList: cfg.DeviceList,
-		MemSize:    cfg.MemSize,
-	})
-	if err != nil {
-		results = append(results, ei.newCret("", err))
-		return
-	}
-
-	for dev, status := range res.DeviceResponses {
-		// TODO DAOS-5828: passing status.Error directly triggers segfault
-		var err error
-		if status.Error != nil {
-			err = status.Error
+	results = make(proto.NvmeControllerResults, 0, ei.GetAllBdevsCount())
+	var bdevTiers = ei.bdevTiers()
+	for tierIdx, cfg := range bdevTiers.Tier {
+		// A config with SCM and no block devices is valid.
+		if len(cfg.DeviceList) == 0 {
+			continue
 		}
-		results = append(results, ei.newCret(dev, err))
+
+		ei.log.Infof("Instance %d: starting format of %s block devices %v",
+			engineIdx, cfg.Class, cfg.DeviceList)
+
+		res, err := p.Format(bdev.FormatRequest{
+			Class:      cfg.Class,
+			DeviceList: cfg.DeviceList,
+			MemSize:    bdevTiers.MemSize,
+		})
+		if err != nil {
+			results = append(results, ei.newCret("", err))
+			continue
+		}
+
+		for dev, status := range res.DeviceResponses {
+			// TODO DAOS-5828: passing status.Error directly triggers segfault
+			var err error
+			if status.Error != nil {
+				err = status.Error
+			}
+			results = append(results, ei.newCret(dev, err))
+		}
+
+		ei.log.Infof("Instance %d tier %d: finished format of %s block devices %v",
+			engineIdx, tierIdx, cfg.Class, cfg.DeviceList)
 	}
-
-	ei.log.Infof("Instance %d: finished format of %s block devices %v",
-		engineIdx, cfg.Class, cfg.DeviceList)
-
 	return
 }
 

@@ -131,8 +131,8 @@ func TestServer_CtlSvc_checkCfgBdevs(t *testing.T) {
 			testCfg.Engines = make([]*engine.Config, tc.numEngines)
 			for idx := 0; idx < tc.numEngines; idx++ {
 				testCfg.Engines[idx] = engine.NewConfig().
-					WithBdevClass("nvme").
-					WithBdevDeviceList(tc.inCfgBdevLists[idx]...)
+					WithBdevClass(0, "nvme").
+					WithBdevDeviceList(0, tc.inCfgBdevLists[idx]...)
 			}
 
 			mbc := &bdev.MockBackendConfig{VmdEnabled: tc.vmdEnabled}

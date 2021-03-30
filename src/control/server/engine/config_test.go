@@ -136,10 +136,10 @@ func TestConstructedConfig(t *testing.T) {
 		WithScmRamdiskSize(42).
 		WithScmMountPoint("/mnt/daostest").
 		WithScmDeviceList("/dev/a", "/dev/b").
-		WithBdevClass("malloc").
-		WithBdevDeviceCount(2).
-		WithBdevFileSize(20).
-		WithBdevDeviceList("/dev/c", "/dev/d").
+		WithBdevClass(0, "malloc").
+		WithBdevDeviceCount(0, 2).
+		WithBdevFileSize(0, 20).
+		WithBdevDeviceList(0, "/dev/c", "/dev/d").
 		WithLogFile("/path/to/log").
 		WithLogMask("DD_DEBUG").
 		WithEnvVars("FOO=BAR", "BAZ=QUX").

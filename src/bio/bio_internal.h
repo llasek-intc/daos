@@ -185,6 +185,7 @@ struct bio_bdev {
 	 * marked as faulty (at least before next server restart).
 	 */
 	bool			 bb_faulty;
+	uint32_t	bb_tier_id;
 };
 
 

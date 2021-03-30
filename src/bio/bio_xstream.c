@@ -48,8 +48,6 @@ static unsigned int bio_chk_cnt_init;
 struct bio_nvme_data {
 	ABT_mutex		 bd_mutex;
 	ABT_cond		 bd_barrier;
-	/* SPDK bdev type */
-	int			 bd_bdev_class;
 	/* How many xstreams has initialized NVMe context */
 	int			 bd_xstream_cnt;
 	/* The thread responsible for SPDK bdevs init/fini */
@@ -201,10 +199,6 @@ populate_whitelist(struct spdk_env_opts *opts)
 	int				 rc = 0;
 	bool				 vmd_enabled = false;
 
-	/* Don't need to pass whitelist for non-NVMe devices */
-	if (nvme_glb.bd_bdev_class != BDEV_CLASS_NVME)
-		return 0;
-
 	/*
 	 * Optionally VMD devices will be used, and will require a different
 	 * transport id to pass to whitelist for DPDK.
@@ -216,10 +210,8 @@ populate_whitelist(struct spdk_env_opts *opts)
 	}
 
 	sp = spdk_conf_find_section(NULL, "Nvme");
-	if (sp == NULL) {
-		D_ERROR("unexpected empty config\n");
-		return -DER_INVAL;
-	}
+	if (sp == NULL)
+		return 0;
 
 	D_ALLOC_PTR(trid);
 	if (trid == NULL)
@@ -404,14 +396,12 @@ bio_nvme_init(const char *nvme_conf, int shm_id, int mem_size,
 	env = getenv("VOS_BDEV_CLASS");
 	if (env && strcasecmp(env, "MALLOC") == 0) {
 		D_WARN("Malloc device(s) will be used!\n");
-		nvme_glb.bd_bdev_class = BDEV_CLASS_MALLOC;
-		nvme_glb.bd_bs_opts.cluster_sz = (1ULL << 20);
+		nvme_glb.bd_bs_opts.cluster_sz = (1ULL << 20);	// @todo_llasek: take care of this once env is removed
 		nvme_glb.bd_bs_opts.num_md_pages = 10;
 		size_mb = 2;
 		bio_chk_cnt_max = 32;
 	} else if (env && strcasecmp(env, "AIO") == 0) {
 		D_WARN("AIO device(s) will be used!\n");
-		nvme_glb.bd_bdev_class = BDEV_CLASS_AIO;
 	}
 
 	bio_chk_sz = (size_mb << 20) >> BIO_DMA_PAGE_SHIFT;
@@ -859,6 +849,21 @@ replace_bio_bdev(struct bio_bdev *old_dev, struct bio_bdev *new_dev)
 	}
 }
 
+static int
+bdev_name_to_tier_id( const char *bdev_name )
+{
+	int tier_id = 0;
+	size_t index = 0;
+	for (index = strlen(bdev_name); index >= 1; index--) {
+		if (bdev_name[index - 1] == '_')
+			break; 
+	}
+	if (index > 1 && sscanf(bdev_name + index, "%d", &tier_id) == 1) {
+		return tier_id;
+	}
+	return 0;
+}
+
 /*
  * Create bio_bdev from SPDK bdev. It checks if the bdev has existing
  * blobstore, if it doesn't have, it'll create one automatically.
@@ -903,6 +908,9 @@ create_bio_bdev(struct bio_xs_context *ctxt, const char *bdev_name,
 		rc = -DER_NOMEM;
 		goto error;
 	}
+
+	d_bdev->bb_tier_id = bdev_name_to_tier_id(bdev_name);
+	D_INFO( "bdev `%s` is tier %d", d_bdev->bb_name, d_bdev->bb_tier_id );
 
 	/*
 	 * Hold the SPDK bdev by an open descriptor, otherwise, the bdev
@@ -1036,9 +1044,6 @@ init_bio_bdevs(struct bio_xs_context *ctxt)
 
 	for (bdev = spdk_bdev_first(); bdev != NULL;
 	     bdev = spdk_bdev_next(bdev)) {
-		if (nvme_glb.bd_bdev_class != get_bdev_type(bdev))
-			continue;
-
 		rc = create_bio_bdev(ctxt, spdk_bdev_get_name(bdev), NULL);
 		if (rc)
 			break;
@@ -1621,9 +1626,6 @@ scan_bio_bdevs(struct bio_xs_context *ctxt, uint64_t now)
 	/* Iterate SPDK bdevs to detect hot plugged device */
 	for (bdev = spdk_bdev_first(); bdev != NULL;
 	     bdev = spdk_bdev_next(bdev)) {
-		if (nvme_glb.bd_bdev_class != get_bdev_type(bdev))
-			continue;
-
 		d_bdev = lookup_dev_by_name(spdk_bdev_get_name(bdev));
 		if (d_bdev != NULL)
 			continue;

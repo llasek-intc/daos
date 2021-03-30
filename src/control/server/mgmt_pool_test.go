@@ -212,8 +212,8 @@ func TestServer_MgmtSvc_calculateCreateStorage(t *testing.T) {
 			engineCfg := engine.NewConfig().WithTargetCount(testTargetCount)
 			if !tc.disableNVMe {
 				engineCfg = engineCfg.
-					WithBdevClass("nvme").
-					WithBdevDeviceList("foo", "bar")
+					WithBdevClass(0, "nvme").
+					WithBdevDeviceList(0, "foo", "bar")
 			}
 			svc := newTestMgmtSvc(t, log)
 			svc.harness.instances[0] = newTestEngine(log, false, engineCfg)
@@ -387,8 +387,8 @@ func TestServer_MgmtSvc_PoolCreate(t *testing.T) {
 			if tc.mgmtSvc == nil {
 				engineCfg := engine.NewConfig().
 					WithTargetCount(tc.targetCount).
-					WithBdevClass("nvme").
-					WithBdevDeviceList("foo", "bar")
+					WithBdevClass(0, "nvme").
+					WithBdevDeviceList(0, "foo", "bar")
 				r := engine.NewTestRunner(nil, engineCfg)
 				if err := r.Start(ctx, make(chan<- error)); err != nil {
 					t.Fatal(err)
@@ -456,8 +456,8 @@ func TestServer_MgmtSvc_PoolCreateDownRanks(t *testing.T) {
 	mgmtSvc.harness.instances[0] = newTestEngine(log, false,
 		engine.NewConfig().
 			WithTargetCount(1).
-			WithBdevClass("nvme").
-			WithBdevDeviceList("foo", "bar"),
+			WithBdevClass(0, "nvme").
+			WithBdevDeviceList(0, "foo", "bar"),
 	)
 
 	dc := newMockDrpcClient(&mockDrpcClientConfig{IsConnectedBool: true})

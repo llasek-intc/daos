@@ -199,8 +199,11 @@ func (srv *server) createEngine(ctx context.Context, idx int, cfg *engine.Config
 		return control.SystemJoin(ctxIn, srv.mgmtSvc.rpcClient, req)
 	}
 
-	// Indicate whether VMD devices have been detected and can be used.
-	cfg.Storage.Bdev.VmdDisabled = srv.bdevProvider.IsVMDDisabled()
+	for tierIdx, _ := range cfg.Storage.Bdev.Tier {
+		// Indicate whether VMD devices have been detected and can be used.
+		cfg.Storage.Bdev.Tier[tierIdx].VmdDisabled = srv.bdevProvider.IsVMDDisabled()
+		cfg.Storage.Bdev.Tier[tierIdx].TierIdx = tierIdx
+	}
 
 	// TODO: ClassProvider should be encapsulated within bdevProvider
 	bcp, err := bdev.NewClassProvider(srv.log, cfg.Storage.SCM.MountPoint, &cfg.Storage.Bdev)

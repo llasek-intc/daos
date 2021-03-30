@@ -238,8 +238,8 @@ func TestServerConfig_Constructed(t *testing.T) {
 				WithScmMountPoint("/mnt/daos/1").
 				WithScmClass("ram").
 				WithScmRamdiskSize(16).
-				WithBdevClass("nvme").
-				WithBdevDeviceList("0000:81:00.0").
+				WithBdevClass(0, "nvme").
+				WithBdevDeviceList(0, "0000:81:00.0").
 				WithFabricInterface("qib0").
 				WithFabricInterfacePort(20000).
 				WithPinnedNumaNode(&numaNode0).
@@ -254,10 +254,10 @@ func TestServerConfig_Constructed(t *testing.T) {
 				WithScmMountPoint("/mnt/daos/2").
 				WithScmClass("dcpm").
 				WithScmDeviceList("/dev/pmem0").
-				WithBdevClass("malloc").
-				WithBdevDeviceList("/tmp/daos-bdev1", "/tmp/daos-bdev2").
-				WithBdevDeviceCount(1).
-				WithBdevFileSize(4).
+				WithBdevClass(0, "malloc").
+				WithBdevDeviceList(0, "/tmp/daos-bdev1", "/tmp/daos-bdev2").
+				WithBdevDeviceCount(0, 1).
+				WithBdevFileSize(0, 4).
 				WithFabricInterface("qib1").
 				WithFabricInterfacePort(20000).
 				WithPinnedNumaNode(&numaNode1).
@@ -569,9 +569,9 @@ func TestServerConfig_DuplicateValues(t *testing.T) {
 		},
 		"overlapping bdev_list": {
 			configA: configA().
-				WithBdevDeviceList("a"),
+				WithBdevDeviceList(0, "a"),
 			configB: configB().
-				WithBdevDeviceList("b", "a"),
+				WithBdevDeviceList(0, "b", "a"),
 			expErr: FaultConfigOverlappingBdevDeviceList(1, 0),
 		},
 	} {

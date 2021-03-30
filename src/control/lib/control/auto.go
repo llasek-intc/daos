@@ -537,8 +537,8 @@ func defaultEngineCfg(idx int) *engine.Config {
 		WithTargetCount(defaultTargetCount).
 		WithLogFile(fmt.Sprintf("%s.%d.log", defaultEngineLogFile, idx)).
 		WithScmClass(storage.ScmClassDCPM.String()).
-		WithBdevClass(storage.BdevClassNvme.String()).
-		WithBdevDeviceList([]string{}...)
+		WithBdevClass(0, storage.BdevClassNvme.String()). // @todo_llasek: tier no
+		WithBdevDeviceList(0, []string{}...)              // @todo_llasek: tier no
 }
 
 // genConfig generates server config file from details of available network,
@@ -568,7 +568,7 @@ func genConfig(accessPoints []string, nd *networkDetails, sd *storageDetails, cc
 		engineCfg := defaultEngineCfg(nn).
 			WithScmMountPoint(fmt.Sprintf("%s%d", scmMountPrefix, nn)).
 			WithScmDeviceList(sd.numaPMems[nn][0]).
-			WithBdevDeviceList(sd.numaSSDs[nn]...).
+			WithBdevDeviceList(0, sd.numaSSDs[nn]...). // @todo_llasek: tier no
 			WithTargetCount(ccs[nn].nrTgts).
 			WithHelperStreamCount(ccs[nn].nrHlprs)
 

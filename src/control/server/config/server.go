@@ -563,13 +563,14 @@ func validateMultiServerConfig(log logging.Logger, c *Server) error {
 			seenScmSet[dev] = idx
 		}
 
-		bdevConf := engine.Storage.Bdev
-		for _, dev := range bdevConf.DeviceList {
-			if seenIn, exists := seenBdevSet[dev]; exists {
-				log.Debugf("bdev_list entry %s in %d overlaps %d", dev, idx, seenIn)
-				return FaultConfigOverlappingBdevDeviceList(idx, seenIn)
+		for _, bdevConf := range engine.Storage.Bdev.Tier {
+			for _, dev := range bdevConf.DeviceList {
+				if seenIn, exists := seenBdevSet[dev]; exists {
+					log.Debugf("bdev_list entry %s in %d overlaps %d", dev, idx, seenIn)
+					return FaultConfigOverlappingBdevDeviceList(idx, seenIn)
+				}
+				seenBdevSet[dev] = idx
 			}
-			seenBdevSet[dev] = idx
 		}
 
 		ndc, err := c.GetDeviceClassFn(engine.Fabric.Interface)

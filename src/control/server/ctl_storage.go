@@ -129,31 +129,33 @@ func (c *StorageControlService) checkCfgBdevs(scanResp *bdev.ScanResponse) error
 	}
 
 	for idx, storageCfg := range c.instanceStorage {
-		cfgBdevs := storageCfg.Bdev.GetNvmeDevs()
-		if len(cfgBdevs) == 0 {
-			continue
-		}
-
-		if !c.bdev.IsVMDDisabled() {
-			c.log.Debug("VMD detected, processing PCI addresses")
-			newBdevs, err := substBdevVmdAddrs(cfgBdevs, scanResp)
-			if err != nil {
-				return err
+		for tierIdx, _ := range storageCfg.Bdev.Tier {
+			cfgBdevs := storageCfg.Bdev.Tier[tierIdx].GetNvmeDevs()
+			if len(cfgBdevs) == 0 {
+				continue
 			}
-			if len(newBdevs) == 0 {
-				return errors.New("unexpected empty bdev list returned " +
-					"check vmd address has backing devices")
-			}
-			c.log.Debugf("instance %d: subst vmd addrs %v->%v",
-				idx, cfgBdevs, newBdevs)
-			cfgBdevs = newBdevs
-			c.instanceStorage[idx].Bdev.DeviceList = cfgBdevs
-		}
 
-		// fail if config specified nvme devices are inaccessible
-		missing, ok := canAccessBdevs(cfgBdevs, scanResp)
-		if !ok {
-			return FaultBdevNotFound(missing)
+			if !c.bdev.IsVMDDisabled() {
+				c.log.Debug("VMD detected, processing PCI addresses")
+				newBdevs, err := substBdevVmdAddrs(cfgBdevs, scanResp)
+				if err != nil {
+					return err
+				}
+				if len(newBdevs) == 0 {
+					return errors.New("unexpected empty bdev list returned " +
+						"check vmd address has backing devices")
+				}
+				c.log.Debugf("instance %d: subst vmd addrs %v->%v",
+					idx, cfgBdevs, newBdevs)
+				cfgBdevs = newBdevs
+				c.instanceStorage[idx].Bdev.Tier[tierIdx].DeviceList = cfgBdevs
+			}
+
+			// fail if config specified nvme devices are inaccessible
+			missing, ok := canAccessBdevs(cfgBdevs, scanResp)
+			if !ok {
+				return FaultBdevNotFound(missing)
+			}
 		}
 	}
 
@@ -167,22 +169,26 @@ func (c *StorageControlService) Setup() error {
 	}
 
 	// don't scan if using emulated NVMe
+	var hasNvmeBdevs bool = false
 	for _, storageCfg := range c.instanceStorage {
-		if storageCfg.Bdev.Class != storage.BdevClassNvme {
-			return nil
+		for bdevTierIdx, _ := range storageCfg.Bdev.Tier {
+			if storageCfg.Bdev.Tier[bdevTierIdx].Class == storage.BdevClassNvme {
+				hasNvmeBdevs = true
+			}
 		}
 	}
 
-	nvmeScanResp, err := c.NvmeScan(bdev.ScanRequest{})
-	if err != nil {
-		c.log.Debugf("%s\n", errors.Wrap(err, "Warning, NVMe Scan"))
-		return nil
-	}
+	if hasNvmeBdevs {
+		nvmeScanResp, err := c.NvmeScan(bdev.ScanRequest{})
+		if err != nil {
+			c.log.Debugf("%s\n", errors.Wrap(err, "Warning, NVMe Scan"))
+			return nil
+		}
 
-	if err := c.checkCfgBdevs(nvmeScanResp); err != nil {
-		return errors.Wrap(err, "validate server config bdevs")
+		if err := c.checkCfgBdevs(nvmeScanResp); err != nil {
+			return errors.Wrap(err, "validate server config bdevs")
+		}
 	}
-
 	return nil
 }
 

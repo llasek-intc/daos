@@ -25,8 +25,12 @@ func (ei *EngineInstance) scmConfig() storage.ScmConfig {
 }
 
 // bdevConfig returns the block device configuration assigned to this instance.
-func (ei *EngineInstance) bdevConfig() storage.BdevConfig {
+func (ei *EngineInstance) bdevTiers() storage.BdevTier {
 	return ei.runner.GetConfig().Storage.Bdev
+}
+
+func (ei *EngineInstance) GetAllBdevsCount() int {
+	return ei.runner.GetConfig().Storage.GetAllBdevsCount()
 }
 
 // MountScmDevice mounts the configured SCM device (DCPM or ramdisk emulation)

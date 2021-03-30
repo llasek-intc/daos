@@ -32,7 +32,7 @@ var (
 			WithScmClass(storage.ScmClassDCPM.String()).
 			WithScmMountPoint(fmt.Sprintf("/mnt/daos%d", numa)).
 			WithScmDeviceList(fmt.Sprintf("/dev/pmem%d", numa)).
-			WithBdevClass(storage.BdevClassNvme.String())
+			WithBdevClass(0, storage.BdevClassNvme.String())
 	}
 	engineCfgWithSSDs = func(t *testing.T, numa int) *engine.Config {
 		var pciAddrs []string

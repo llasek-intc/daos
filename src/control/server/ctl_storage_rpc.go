@@ -180,50 +180,52 @@ func (c *ControlService) scanInstanceBdevs(ctx context.Context) (*bdev.ScanRespo
 	instances := c.harness.Instances()
 
 	for _, srv := range instances {
-		nvmeDevs := c.instanceStorage[srv.Index()].Bdev.GetNvmeDevs()
-		if len(nvmeDevs) == 0 {
-			continue
-		}
+		for tierIdx, _ := range c.instanceStorage[srv.Index()].Bdev.Tier {
+			nvmeDevs := c.instanceStorage[srv.Index()].Bdev.Tier[tierIdx].GetNvmeDevs()
+			if len(nvmeDevs) == 0 {
+				continue
+			}
 
-		// only retrieve results for devices listed in server config
-		bdevReq := bdev.ScanRequest{DeviceList: nvmeDevs}
+			// only retrieve results for devices listed in server config
+			bdevReq := bdev.ScanRequest{DeviceList: nvmeDevs}
 
-		c.log.Debugf("instance %d storage scan: only show bdev devices in config %v",
-			srv.Index(), bdevReq.DeviceList)
+			c.log.Debugf("instance %d storage scan: only show bdev devices in config %v",
+				srv.Index(), bdevReq.DeviceList)
 
-		// scan through control-plane to get up-to-date stats if io
-		// server is not active (and therefore has not claimed the
-		// assigned devices), bypass cache to get fresh health stats
-		if !srv.isReady() {
-			bdevReq.NoCache = true
+			// scan through control-plane to get up-to-date stats if io
+			// server is not active (and therefore has not claimed the
+			// assigned devices), bypass cache to get fresh health stats
+			if !srv.isReady() {
+				bdevReq.NoCache = true
+
+				bsr, err := c.NvmeScan(bdevReq)
+				if err != nil {
+					return nil, errors.Wrap(err, "nvme scan")
+				}
+
+				ctrlrs = ctrlrs.Update(bsr.Controllers...)
+				continue
+			}
 
 			bsr, err := c.NvmeScan(bdevReq)
 			if err != nil {
 				return nil, errors.Wrap(err, "nvme scan")
 			}
 
+			ctrlrMap, err := mapCtrlrs(bsr.Controllers)
+			if err != nil {
+				return nil, errors.Wrap(err, "create controller map")
+			}
+
+			// if io servers are active and have claimed the assigned devices,
+			// query over drpc to update controller details with current health
+			// stats and smd info
+			if err := srv.updateInUseBdevs(ctx, ctrlrMap); err != nil {
+				return nil, errors.Wrap(err, "updating bdev health and smd info")
+			}
+
 			ctrlrs = ctrlrs.Update(bsr.Controllers...)
-			continue
 		}
-
-		bsr, err := c.NvmeScan(bdevReq)
-		if err != nil {
-			return nil, errors.Wrap(err, "nvme scan")
-		}
-
-		ctrlrMap, err := mapCtrlrs(bsr.Controllers)
-		if err != nil {
-			return nil, errors.Wrap(err, "create controller map")
-		}
-
-		// if io servers are active and have claimed the assigned devices,
-		// query over drpc to update controller details with current health
-		// stats and smd info
-		if err := srv.updateInUseBdevs(ctx, ctrlrMap); err != nil {
-			return nil, errors.Wrap(err, "updating bdev health and smd info")
-		}
-
-		ctrlrs = ctrlrs.Update(bsr.Controllers...)
 	}
 
 	return &bdev.ScanResponse{Controllers: ctrlrs}, nil
@@ -473,10 +475,13 @@ func (c *ControlService) StorageFormat(ctx context.Context, req *ctlpb.StorageFo
 
 		if instanceErrored[srv.Index()] {
 			// if scm errored, indicate skipping bdev format
-			if len(srv.bdevConfig().DeviceList) > 0 {
-				ret := srv.newCret("", nil)
-				ret.State.Info = fmt.Sprintf(msgNvmeFormatSkip, srv.Index())
-				resp.Crets = append(resp.Crets, ret)
+			for bdevTierIdx, _ := range srv.bdevTiers().Tier {
+				if len(srv.bdevTiers().Tier[bdevTierIdx].DeviceList) > 0 {
+					ret := srv.newCret("", nil)
+					ret.State.Info = fmt.Sprintf(msgNvmeFormatSkip, srv.Index())
+					resp.Crets = append(resp.Crets, ret)
+					break
+				}
 			}
 			continue
 		}

@@ -131,13 +131,12 @@ func (b BdevClass) String() string {
 
 // BdevConfig represents a Block Device (NVMe, etc.) configuration entry.
 type BdevConfig struct {
-	ConfigPath  string    `yaml:"-" cmdLongFlag:"--nvme" cmdShortFlag:"-n"`
+	TierIdx     int       `yaml:"-"`
 	Class       BdevClass `yaml:"bdev_class,omitempty"`
 	DeviceList  []string  `yaml:"bdev_list,omitempty"`
 	VmdDisabled bool      `yaml:"-"` // set during start-up
 	DeviceCount int       `yaml:"bdev_number,omitempty"`
 	FileSize    int       `yaml:"bdev_size,omitempty"`
-	MemSize     int       `yaml:"-" cmdLongFlag:"--mem_size,nonzero" cmdShortFlag:"-r,nonzero"`
 	VosEnv      string    `yaml:"-" cmdEnv:"VOS_BDEV_CLASS"`
 	Hostname    string    `yaml:"-"` // used when generating templates
 }
@@ -152,4 +151,14 @@ func (bc *BdevConfig) GetNvmeDevs() []string {
 	}
 
 	return []string{}
+}
+
+type BdevTier struct {
+	ConfigPath string       `yaml:"-" cmdLongFlag:"--nvme" cmdShortFlag:"-n"`
+	MemSize    int          `yaml:"-" cmdLongFlag:"--mem_size,nonzero" cmdShortFlag:"-r,nonzero"`
+	Tier       []BdevConfig `yaml:"bdev_tier,omitempty"`
+}
+
+func (bt *BdevTier) Validate() error {
+	return nil
 }

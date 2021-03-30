@@ -45,7 +45,7 @@ const (
 
 func cfgHasBdev(cfg *config.Server) bool {
 	for _, engineCfg := range cfg.Engines {
-		if len(engineCfg.Storage.Bdev.DeviceList) > 0 {
+		if engineCfg.Storage.GetAllBdevsCount() > 0 {
 			return true
 		}
 	}
@@ -273,8 +273,11 @@ func Start(log *logging.LeveledLogger, cfg *config.Server) error {
 			engineCfg.Storage.Bdev.MemSize -= engineCfg.Storage.Bdev.MemSize / 16
 		}
 
-		// Indicate whether VMD devices have been detected and can be used.
-		engineCfg.Storage.Bdev.VmdDisabled = bdevProvider.IsVMDDisabled()
+		for tierIdx, _ := range engineCfg.Storage.Bdev.Tier {
+			// Indicate whether VMD devices have been detected and can be used.
+			engineCfg.Storage.Bdev.Tier[tierIdx].VmdDisabled = bdevProvider.IsVMDDisabled()
+			engineCfg.Storage.Bdev.Tier[tierIdx].TierIdx = tierIdx
+		}
 
 		bp, err := bdev.NewClassProvider(log, engineCfg.Storage.SCM.MountPoint, &engineCfg.Storage.Bdev)
 		if err != nil {

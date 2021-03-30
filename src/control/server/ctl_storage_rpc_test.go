@@ -239,8 +239,8 @@ func TestServer_CtlSvc_StorageScan_PreIOStart(t *testing.T) {
 
 			emptyCfg := config.DefaultServer()
 			engineCfg := engine.NewConfig().
-				WithBdevClass("nvme").
-				WithBdevDeviceList(storage.MockNvmeController().PciAddr)
+				WithBdevClass(0, "nvme").
+				WithBdevDeviceList(0, storage.MockNvmeController().PciAddr)
 			engineCfgs := []*engine.Config{engineCfg}
 			if tc.multiIO {
 				engineCfgs = append(engineCfgs, engineCfg)
@@ -462,11 +462,11 @@ func TestServer_CtlSvc_StorageScan_PostIOStart(t *testing.T) {
 			},
 			cfg: config.DefaultServer().WithEngines(
 				engine.NewConfig().
-					WithBdevClass("nvme").
-					WithBdevDeviceList(storage.MockNvmeController(1).PciAddr),
+					WithBdevClass(0, "nvme").
+					WithBdevDeviceList(0, storage.MockNvmeController(1).PciAddr),
 				engine.NewConfig().
-					WithBdevClass("nvme").
-					WithBdevDeviceList(storage.MockNvmeController(2).PciAddr),
+					WithBdevClass(0, "nvme").
+					WithBdevDeviceList(0, storage.MockNvmeController(2).PciAddr),
 			),
 			drpcResps: map[int][]*mockDrpcResponse{
 				0: {
@@ -503,11 +503,11 @@ func TestServer_CtlSvc_StorageScan_PostIOStart(t *testing.T) {
 			},
 			cfg: config.DefaultServer().WithEngines(
 				engine.NewConfig().
-					WithBdevClass("nvme").
-					WithBdevDeviceList(storage.MockNvmeController(1).PciAddr),
+					WithBdevClass(0, "nvme").
+					WithBdevDeviceList(0, storage.MockNvmeController(1).PciAddr),
 				engine.NewConfig().
-					WithBdevClass("nvme").
-					WithBdevDeviceList(storage.MockNvmeController(2).PciAddr),
+					WithBdevClass(0, "nvme").
+					WithBdevDeviceList(0, storage.MockNvmeController(2).PciAddr),
 			),
 			drpcResps: map[int][]*mockDrpcResponse{
 				0: {
@@ -545,11 +545,11 @@ func TestServer_CtlSvc_StorageScan_PostIOStart(t *testing.T) {
 			},
 			cfg: config.DefaultServer().WithEngines(
 				engine.NewConfig().
-					WithBdevClass("nvme").
-					WithBdevDeviceList(storage.MockNvmeController(1).PciAddr),
+					WithBdevClass(0, "nvme").
+					WithBdevDeviceList(0, storage.MockNvmeController(1).PciAddr),
 				engine.NewConfig().
-					WithBdevClass("nvme").
-					WithBdevDeviceList(storage.MockNvmeController(2).PciAddr),
+					WithBdevClass(0, "nvme").
+					WithBdevDeviceList(0, storage.MockNvmeController(2).PciAddr),
 			),
 			scanTwice: true,
 			drpcResps: map[int][]*mockDrpcResponse{
@@ -591,11 +591,11 @@ func TestServer_CtlSvc_StorageScan_PostIOStart(t *testing.T) {
 			},
 			cfg: config.DefaultServer().WithEngines(
 				engine.NewConfig().
-					WithBdevClass("nvme").
-					WithBdevDeviceList(storage.MockNvmeController(1).PciAddr),
+					WithBdevClass(0, "nvme").
+					WithBdevDeviceList(0, storage.MockNvmeController(1).PciAddr),
 				engine.NewConfig().
-					WithBdevClass("nvme").
-					WithBdevDeviceList(storage.MockNvmeController(2).PciAddr),
+					WithBdevClass(0, "nvme").
+					WithBdevDeviceList(0, storage.MockNvmeController(2).PciAddr),
 			),
 			drpcResps: map[int][]*mockDrpcResponse{
 				0: {
@@ -733,8 +733,8 @@ func TestServer_CtlSvc_StorageScan_PostIOStart(t *testing.T) {
 			if tc.cfg == nil {
 				tc.cfg = config.DefaultServer().WithEngines(
 					engine.NewConfig().
-						WithBdevClass("nvme").
-						WithBdevDeviceList(storage.MockNvmeController().PciAddr),
+						WithBdevClass(0, "nvme").
+						WithBdevDeviceList(0, storage.MockNvmeController().PciAddr),
 				)
 			}
 			if len(tc.cfg.Engines) != len(tc.drpcResps) {
@@ -1392,10 +1392,10 @@ func TestServer_CtlSvc_StorageFormat(t *testing.T) {
 				engine := engine.NewConfig().
 					WithScmMountPoint(scmMount).
 					WithScmClass(tc.sClass.String()).
-					WithBdevClass(tc.bClass.String()).
-					WithBdevFileSize(tc.bSize).
+					WithBdevClass(0, tc.bClass.String()).
+					WithBdevFileSize(0, tc.bSize).
 					WithScmRamdiskSize(tc.sSize).
-					WithBdevDeviceList(tc.bDevs[idx]...).
+					WithBdevDeviceList(0, tc.bDevs[idx]...).
 					WithScmDeviceList(tc.sDevs[idx])
 				config.Engines = append(config.Engines, engine)
 			}

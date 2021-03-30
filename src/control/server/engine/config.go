@@ -21,8 +21,22 @@ const (
 
 // StorageConfig encapsulates an I/O Engine's storage configuration.
 type StorageConfig struct {
-	SCM  storage.ScmConfig  `yaml:",inline"`
-	Bdev storage.BdevConfig `yaml:",inline"`
+	SCM  storage.ScmConfig `yaml:",inline"`
+	Bdev storage.BdevTier  `yaml:",inline"`
+}
+
+func (sc *StorageConfig) CreateTiers(totalTiers int) {
+	for totalTiers < len(sc.Bdev.Tier) {
+		sc.Bdev.Tier = append(sc.Bdev.Tier, storage.BdevConfig{})
+	}
+}
+
+func (sc *StorageConfig) GetAllBdevsCount() (bdevsCount int) {
+	bdevsCount = 0
+	for tierIdx, _ := range sc.Bdev.Tier {
+		bdevsCount += len(sc.Bdev.Tier[tierIdx].DeviceList)
+	}
+	return
 }
 
 // Validate ensures that the configuration meets minimum standards.
@@ -30,8 +44,22 @@ func (sc *StorageConfig) Validate() error {
 	if err := sc.SCM.Validate(); err != nil {
 		return errors.Wrap(err, "scm config validation failed")
 	}
-	if err := sc.Bdev.Validate(); err != nil {
-		return errors.Wrap(err, "bdev config validation failed")
+
+	type void struct{}
+	var seen void
+	seenBdevSet := make(map[string]void)
+
+	for _, bdevConf := range sc.Bdev.Tier {
+		if err := bdevConf.Validate(); err != nil {
+			return errors.Wrap(err, "bdev config validation failed")
+		}
+
+		for _, dev := range bdevConf.DeviceList {
+			if _, exists := seenBdevSet[dev]; exists {
+				return errors.Wrap(errors.New("bdev reused"), "bdev tier validation failed")
+			}
+			seenBdevSet[dev] = seen
+		}
 	}
 	return nil
 }
@@ -248,7 +276,9 @@ func (c *Config) WithSystemName(name string) *Config {
 
 // WithHostname sets the hostname to be used when generating NVMe configurations.
 func (c *Config) WithHostname(name string) *Config {
-	c.Storage.Bdev.Hostname = name
+	for tier := 0; tier < len(c.Storage.Bdev.Tier); tier++ {
+		c.Storage.Bdev.Tier[tier].Hostname = name
+	}
 	return c
 }
 
@@ -284,26 +314,30 @@ func (c *Config) WithScmDeviceList(devices ...string) *Config {
 }
 
 // WithBdevClass defines the type of block device storage to be used.
-func (c *Config) WithBdevClass(bdevClass string) *Config {
-	c.Storage.Bdev.Class = storage.BdevClass(bdevClass)
+func (c *Config) WithBdevClass(bdevTier int, bdevClass string) *Config {
+	c.Storage.CreateTiers(bdevTier + 1)
+	c.Storage.Bdev.Tier[bdevTier].Class = storage.BdevClass(bdevClass)
 	return c
 }
 
 // WithBdevDeviceList sets the list of block devices to be used.
-func (c *Config) WithBdevDeviceList(devices ...string) *Config {
-	c.Storage.Bdev.DeviceList = devices
+func (c *Config) WithBdevDeviceList(bdevTier int, devices ...string) *Config {
+	c.Storage.CreateTiers(bdevTier + 1)
+	c.Storage.Bdev.Tier[bdevTier].DeviceList = devices
 	return c
 }
 
 // WithBdevDeviceCount sets the number of devices to be created when BdevClass is malloc.
-func (c *Config) WithBdevDeviceCount(count int) *Config {
-	c.Storage.Bdev.DeviceCount = count
+func (c *Config) WithBdevDeviceCount(bdevTier int, count int) *Config {
+	c.Storage.CreateTiers(bdevTier + 1)
+	c.Storage.Bdev.Tier[bdevTier].DeviceCount = count
 	return c
 }
 
 // WithBdevFileSize sets the backing file size (used when BdevClass is malloc or file).
-func (c *Config) WithBdevFileSize(size int) *Config {
-	c.Storage.Bdev.FileSize = size
+func (c *Config) WithBdevFileSize(bdevTier int, size int) *Config {
+	c.Storage.CreateTiers(bdevTier + 1)
+	c.Storage.Bdev.Tier[bdevTier].FileSize = size
 	return c
 }
 

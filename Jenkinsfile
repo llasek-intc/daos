@@ -405,6 +405,11 @@ boolean skip_build_on_centos7_gcc_release() {
            quickbuild()
 }
 
+boolean skip_build_on_centos7_clang_release() {
+    return skip_stage('build-centos7-clang-release') ||
+           quickbuild()
+}
+
 boolean skip_build_on_centos8_gcc_dev() {
     return skip_stage('build-centos8-gcc-dev') ||
            quickbuild()
@@ -899,8 +904,8 @@ pipeline {
                         }
                     }
                     steps {
-                        sh """ls -ld /mnt/daos_tmp; id"""
                         sconsBuild parallel_build: parallel_build(),
+                                   scons_exe: 'scons-3',
                                    scons_args: "PREFIX=/opt/daos TARGET_TYPE=release",
                                    build_deps: "no"
                     }
@@ -923,7 +928,7 @@ pipeline {
                 stage('Build on CentOS 7 with Clang') {
                     when {
                         beforeAgent true
-                        expression { ! skip_build_on_landing_branch() }
+                        expression { ! skip_build_on_centos7_clang_release() }
                     }
                     agent {
                         dockerfile {
@@ -942,6 +947,7 @@ pipeline {
                                    scons_exe: 'scons-3',
                                    scons_args: scons_faults_args() + " PREFIX=/opt/daos TARGET_TYPE=release",
                                    build_deps: "no"
+                        sh """./utils/node_local_test.py --no-root kv"""
                     }
                     post {
                         always {

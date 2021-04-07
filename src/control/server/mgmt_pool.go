@@ -115,9 +115,10 @@ func (svc *mgmtSvc) calculateCreateStorage(req *mgmtpb.PoolCreateReq) error {
 		if req.GetScmbytes() == 0 {
 			req.Scmbytes = storagePerRank(req.GetTotalbytes())
 		}
-		req.Nvmebytes = 0
+		req.Nvmebytes = nil
 	case req.GetTotalbytes() > 0:
-		req.Nvmebytes = storagePerRank(req.GetTotalbytes())
+		req.Nvmebytes = make([]uint64, 0)
+		req.Nvmebytes = append(req.Nvmebytes, req.GetTotalbytes())
 		req.Scmbytes = storagePerRank(uint64(float64(req.GetTotalbytes()) * req.GetScmratio()))
 	}
 
@@ -131,8 +132,10 @@ func (svc *mgmtSvc) calculateCreateStorage(req *mgmtpb.PoolCreateReq) error {
 	}
 	minNvmeRequired := engine.NvmeMinBytesPerTarget * uint64(targetCount)
 
-	if req.Nvmebytes != 0 && req.Nvmebytes < minNvmeRequired {
-		return FaultPoolNvmeTooSmall(req.Nvmebytes, targetCount)
+	for _, nvmeTierBytes := range req.Nvmebytes {
+		if nvmeTierBytes < minNvmeRequired {
+			return FaultPoolNvmeTooSmall(nvmeTierBytes, targetCount)
+		}
 	}
 	if req.Scmbytes < engine.ScmMinBytesPerTarget*uint64(targetCount) {
 		return FaultPoolScmTooSmall(req.Scmbytes, targetCount)

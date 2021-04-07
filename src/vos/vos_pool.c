@@ -238,7 +238,7 @@ static int pool_open(PMEMobjpool *ph, struct vos_pool_df *pool_df, uuid_t uuid,
 
 int
 vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
-		daos_size_t nvme_sz, unsigned int flags, daos_handle_t *poh)
+		daos_size_t blob_tiers_nr, daos_size_t *blob_tier_sz, unsigned int flags, daos_handle_t *poh)
 {
 	PMEMobjpool		*ph;
 	struct umem_attr	 uma = {0};
@@ -250,12 +250,20 @@ vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
 	struct d_uuid		 ukey;
 	struct vos_pool		*pool = NULL;
 	int			 rc = 0, enabled = 1;
+	
+	// @todo_llasek: implement tiering:
+	daos_size_t nvme_sz = 0;
+	daos_size_t tier_no = 0;
 
-	if (!path || uuid_is_null(uuid))
+	if (!path || uuid_is_null(uuid) || (blob_tiers_nr > 0 && blob_tier_sz == NULL))
 		return -DER_INVAL;
 
-	D_DEBUG(DB_MGMT, "Pool Path: %s, size: "DF_U64":"DF_U64", "
-		"UUID: "DF_UUID"\n", path, scm_sz, nvme_sz, DP_UUID(uuid));
+	for ( tier_no = 0; tier_no < blob_tiers_nr; tier_no++) {
+		nvme_sz += blob_tier_sz[tier_no];
+	}
+
+	D_DEBUG(DB_MGMT, "Pool Path: %s, size: "DF_U64":"DF_U64" ("DF_U64" tiers), "
+		"UUID: "DF_UUID"\n", path, scm_sz, nvme_sz, blob_tiers_nr, DP_UUID(uuid));
 
 	if (flags & VOS_POF_SMALL)
 		flags |= VOS_POF_EXCL;

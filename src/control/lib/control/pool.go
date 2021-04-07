@@ -98,7 +98,7 @@ func genPoolCreateRequest(in *PoolCreateReq) (out *mgmtpb.PoolCreateReq, err err
 		return nil, err
 	}
 
-	if in.TotalBytes > 0 && (in.ScmBytes > 0 || in.NvmeBytes > 0) {
+	if in.TotalBytes > 0 && (in.ScmBytes > 0 || in.NvmeBytes != nil) {
 		return nil, errors.New("can't mix TotalBytes and ScmBytes/NvmeBytes")
 	}
 	if in.TotalBytes == 0 && in.ScmBytes == 0 {
@@ -133,7 +133,7 @@ type (
 		// manual params
 		Ranks     []system.Rank
 		ScmBytes  uint64
-		NvmeBytes uint64
+		NvmeBytes []uint64
 	}
 
 	// PoolCreateResp contains the response from a pool create request.
@@ -142,7 +142,7 @@ type (
 		SvcReps   []uint32 `json:"svc_reps"`
 		TgtRanks  []uint32 `json:"tgt_ranks"`
 		ScmBytes  uint64   `json:"scm_bytes"`
-		NvmeBytes uint64   `json:"nvme_bytes"`
+		NvmeBytes []uint64 `json:"nvme_bytes"`
 	}
 )
 

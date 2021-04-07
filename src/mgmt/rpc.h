@@ -128,7 +128,7 @@ CRT_RPC_DECLARE(mgmt_pool_get_svcranks, DAOS_ISEQ_MGMT_POOL_GET_SVCRANKS,
 	((uuid_t)		(tc_pool_uuid)		CRT_VAR) \
 	((d_string_t)		(tc_tgt_dev)		CRT_VAR) \
 	((daos_size_t)		(tc_scm_size)		CRT_VAR) \
-	((daos_size_t)		(tc_nvme_size)		CRT_VAR)
+	((daos_size_t)		(tc_nvme_size)		CRT_ARRAY)
 
 #define DAOS_OSEQ_MGMT_TGT_CREATE /* output fields */		   \
 	((uuid_t)		(tc_tgt_uuids)		CRT_ARRAY) \

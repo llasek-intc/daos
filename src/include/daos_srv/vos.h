@@ -233,7 +233,7 @@ vos_self_fini(void);
  */
 int
 vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
-		daos_size_t blob_sz, unsigned int flags, daos_handle_t *poh);
+		daos_size_t blob_tiers_nr, daos_size_t *blob_tier_sz, unsigned int flags, daos_handle_t *poh);
 
 /**
  * Kill a VOS pool before destroy

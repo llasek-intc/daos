@@ -72,9 +72,10 @@ PROTOC_GEN_GO := $(GOPATH)/bin/protoc-gen-go
 
 $(PROTOC_GEN_GO): $(PROTOC)
 	@echo "Installing protobuf generator for Go..."
-	[ -d $(GOPATH)/src/$(PROTOC_GEN_GO_IMP) ] &&\
+	if [ -d $(GOPATH)/src/$(PROTOC_GEN_GO_IMP) ]; then\
 		cd $(GOPATH)/src/$(PROTOC_GEN_GO_IMP) &&\
-		git checkout master
+		git checkout master;\
+	fi
 	go get -u $(PROTOC_GEN_GO_IMP) &&\
 	cd $(GOPATH)/src/$(PROTOC_GEN_GO_IMP) &&\
 	git checkout $(PROTOC_GEN_GO_TAG) &&\

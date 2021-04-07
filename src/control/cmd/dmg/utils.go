@@ -8,10 +8,12 @@ package main
 
 import (
 	"bytes"
+	"encoding/csv"
 	"fmt"
 	"sort"
 	"strings"
 
+	"github.com/dustin/go-humanize"
 	"github.com/pkg/errors"
 
 	"github.com/daos-stack/daos/src/control/common"
@@ -91,4 +93,23 @@ func errIncompatFlags(key string, incompat ...string) error {
 	}
 
 	return errors.Errorf("%s with --%s", base, strings.Join(incompat, " or --"))
+}
+
+func parseUint64Array(in string) (out []uint64, err error) {
+	arr, err := csv.NewReader(strings.NewReader(in)).Read()
+	if arr == nil || err != nil {
+		out = nil
+		return
+	}
+	out = make([]uint64, 0)
+	for _, elemStr := range arr {
+		elemInt, err_ := humanize.ParseBytes(elemStr)
+		if err != nil {
+			out = nil
+			err = err_
+			return
+		}
+		out = append(out, elemInt)
+	}
+	return
 }

@@ -449,7 +449,8 @@ ds_mgmt_tgt_file(const uuid_t pool_uuid, const char *fname, int *idx,
 struct vos_pool_arg {
 	uuid_t		vpa_uuid;
 	daos_size_t	vpa_scm_size;
-	daos_size_t	vpa_nvme_size;
+	daos_size_t	vpa_nvme_tiers_nr;
+	daos_size_t	*vpa_nvme_tier_size;
 };
 
 static int
@@ -466,7 +467,7 @@ tgt_vos_create_one(void *varg)
 		return rc;
 
 	rc = vos_pool_create(path, (unsigned char *)vpa->vpa_uuid,
-			     vpa->vpa_scm_size, vpa->vpa_nvme_size, 0, NULL);
+			     vpa->vpa_scm_size, vpa->vpa_nvme_tiers_nr, vpa->vpa_nvme_tier_size, 0, NULL);
 	if (rc)
 		D_ERROR(DF_UUID": failed to init vos pool %s: %d\n",
 			DP_UUID(vpa->vpa_uuid), path, rc);
@@ -549,9 +550,9 @@ tgt_vos_preallocate(void *arg)
 
 static int
 tgt_vos_create(struct ds_pooltgts_rec *ptrec, uuid_t uuid,
-	       daos_size_t tgt_scm_size, daos_size_t tgt_nvme_size)
+	       daos_size_t tgt_scm_size, daos_size_t tgt_nvme_tiers_nr, daos_size_t *tgt_nvme_tier_size)
 {
-	daos_size_t		scm_size, nvme_size;
+	daos_size_t		scm_size;
 	struct vos_create	vc = {0};
 	int			rc = 0;
 	pthread_t		thread;
@@ -563,7 +564,6 @@ tgt_vos_create(struct ds_pooltgts_rec *ptrec, uuid_t uuid,
 	 */
 	D_ASSERT(dss_tgt_nr > 0);
 	scm_size = max(tgt_scm_size / dss_tgt_nr, 1 << 24);
-	nvme_size = tgt_nvme_size / dss_tgt_nr;
 
 	vc.vc_tgt_nr = dss_tgt_nr;
 	vc.vc_scm_size = scm_size;
@@ -614,13 +614,27 @@ tgt_vos_create(struct ds_pooltgts_rec *ptrec, uuid_t uuid,
 
 	if (!rc) {
 		struct vos_pool_arg	vpa;
+		daos_size_t nvme_tier_nr = 0;
+		daos_size_t     *nvme_tier_size;
+
+		D_ALLOC_CORE(nvme_tier_size, sizeof(daos_size_t), tgt_nvme_tiers_nr);	// @todo_llasek: probably can skip the alloc
+		if (nvme_tier_size == NULL) {
+			D_ERROR(DF_UUID": failed to allocate nvme_tier_size array\n", DP_UUID(uuid));
+			return -DER_NOMEM;
+		}
+		for (nvme_tier_nr = 0; nvme_tier_nr < tgt_nvme_tiers_nr; nvme_tier_nr++) {
+			nvme_tier_size[nvme_tier_nr] = tgt_nvme_tier_size[nvme_tier_nr] / dss_tgt_nr;
+		}
 
 		uuid_copy(vpa.vpa_uuid, uuid);
 		/* A zero size accommodates the existing file */
 		vpa.vpa_scm_size = 0;
-		vpa.vpa_nvme_size = nvme_size;
+		vpa.vpa_nvme_tiers_nr = tgt_nvme_tiers_nr;
+		vpa.vpa_nvme_tier_size = nvme_tier_size;
 
 		rc = dss_thread_collective(tgt_vos_create_one, &vpa, 0);
+
+		D_FREE(nvme_tier_size);
 	}
 
 	/** brute force cleanup to be done by the caller */
@@ -631,7 +645,7 @@ static int tgt_destroy(uuid_t pool_uuid, char *path);
 
 static int
 tgt_create(struct ds_pooltgts_rec *ptrec, uuid_t pool_uuid, uuid_t tgt_uuid,
-	   daos_size_t scm_size, daos_size_t nvme_size, char *path)
+	   daos_size_t scm_size, daos_size_t nvme_tiers_nr, daos_size_t *nvme_tier_size, char *path)
 {
 	char	*newborn = NULL;
 	int	 rc;
@@ -650,7 +664,7 @@ tgt_create(struct ds_pooltgts_rec *ptrec, uuid_t pool_uuid, uuid_t tgt_uuid,
 	}
 
 	/** create VOS files */
-	rc = tgt_vos_create(ptrec, pool_uuid, scm_size, nvme_size);
+	rc = tgt_vos_create(ptrec, pool_uuid, scm_size, nvme_tiers_nr, nvme_tier_size);
 	if (rc)
 		D_GOTO(out_tree, rc);
 
@@ -828,7 +842,7 @@ ds_mgmt_hdlr_tgt_create(crt_rpc_t *tc_req)
 	} else if (errno == ENOENT) {
 		/** target doesn't exist, create one */
 		rc = tgt_create(ptrec, tc_in->tc_pool_uuid, tgt_uuid,
-				tc_in->tc_scm_size, tc_in->tc_nvme_size, path);
+				tc_in->tc_scm_size, tc_in->tc_nvme_size.ca_count, tc_in->tc_nvme_size.ca_arrays, path);
 	} else {
 		rc = daos_errno2der(errno);
 	}

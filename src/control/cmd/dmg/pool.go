@@ -108,6 +108,7 @@ func (cmd *PoolCreateCmd) Execute(args []string) error {
 		req.ScmRatio = cmd.ScmRatio / 100
 		cmd.log.Infof("Creating DAOS pool with automatic storage allocation: "+
 			"%s NVMe + %0.2f%% SCM", humanize.Bytes(req.TotalBytes), req.ScmRatio*100)
+		// @todo_llasek: add auto tiering?
 	} else {
 		// manual selection of storage values
 		if cmd.NumRanks > 0 {
@@ -120,15 +121,19 @@ func (cmd *PoolCreateCmd) Execute(args []string) error {
 		}
 
 		if cmd.NVMeSize != "" {
-			req.NvmeBytes, err = humanize.ParseBytes(cmd.NVMeSize)
+			req.NvmeBytes, err = parseUint64Array(cmd.NVMeSize)
 			if err != nil {
 				return errors.Wrap(err, "failed to parse pool NVMe size")
 			}
 		}
 
 		ratio := 1.0
-		if req.NvmeBytes > 0 {
-			ratio = float64(req.ScmBytes) / float64(req.NvmeBytes)
+		var nvmeBytes uint64 = 0
+		for _, nvmeTierBytes := range req.NvmeBytes {
+			nvmeBytes += nvmeTierBytes
+		}
+		if nvmeBytes > 0 {
+			ratio = float64(req.ScmBytes) / float64(nvmeBytes)
 		}
 		if ratio < storage.MinScmToNVMeRatio {
 			cmd.log.Infof("SCM:NVMe ratio is less than %0.2f %%, DAOS "+
@@ -136,7 +141,7 @@ func (cmd *PoolCreateCmd) Execute(args []string) error {
 		}
 		cmd.log.Infof("Creating DAOS pool with manual per-server storage allocation: "+
 			"%s SCM, %s NVMe (%0.2f%% ratio)", humanize.Bytes(req.ScmBytes),
-			humanize.Bytes(req.NvmeBytes), ratio*100)
+			humanize.Bytes(nvmeBytes), ratio*100)
 	}
 
 	resp, err := control.PoolCreate(context.Background(), cmd.ctlInvoker, req)

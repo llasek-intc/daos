@@ -66,7 +66,7 @@ pool_init(struct credit_context *tsc)
 		if (tsc_create_pool(tsc)) {
 			/* Use pool size as blob size for this moment. */
 			rc = vos_pool_create(pmem_file, tsc->tsc_pool_uuid, 0,
-					     tsc->tsc_nvme_size, 0, &poh);
+					     1, &tsc->tsc_nvme_size, 0, &poh);	// @todo_llasek: single tier hardcoded
 			if (rc)
 				goto out;
 		} else {

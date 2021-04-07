@@ -63,13 +63,17 @@ func PrintPoolCreateResponse(pcr *control.PoolCreateResp, out io.Writer, opts ..
 		return errors.New("nil response")
 	}
 
-	ratio := 1.0
-	if pcr.NvmeBytes > 0 {
-		ratio = float64(pcr.ScmBytes) / float64(pcr.NvmeBytes)
-	}
-
 	if len(pcr.TgtRanks) == 0 {
 		return errors.New("create response had 0 target ranks")
+	}
+
+	ratio := 1.0
+	var nvmeBytes uint64 = 0
+	for _, nvmeTierBytes := range pcr.NvmeBytes {
+		nvmeBytes += nvmeTierBytes
+	}
+	if nvmeBytes > 0 {
+		ratio = float64(pcr.ScmBytes) / float64(nvmeBytes)
 	}
 
 	numRanks := uint64(len(pcr.TgtRanks))
@@ -78,9 +82,9 @@ func PrintPoolCreateResponse(pcr *control.PoolCreateResp, out io.Writer, opts ..
 		{"UUID": pcr.UUID},
 		{"Service Ranks": formatRanks(pcr.SvcReps)},
 		{"Storage Ranks": formatRanks(pcr.TgtRanks)},
-		{"Total Size": humanize.Bytes((pcr.ScmBytes + pcr.NvmeBytes) * numRanks)},
+		{"Total Size": humanize.Bytes((pcr.ScmBytes + nvmeBytes) * numRanks)},
 		{"SCM": fmt.Sprintf("%s (%s / rank)", humanize.Bytes(pcr.ScmBytes*numRanks), humanize.Bytes(pcr.ScmBytes))},
-		{"NVMe": fmt.Sprintf("%s (%s / rank)", humanize.Bytes(pcr.NvmeBytes*numRanks), humanize.Bytes(pcr.NvmeBytes))},
+		{"NVMe": fmt.Sprintf("%s (%s / rank)", humanize.Bytes(nvmeBytes*numRanks), humanize.Bytes(nvmeBytes))},
 	}))
 
 	return err

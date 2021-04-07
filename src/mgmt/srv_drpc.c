@@ -318,7 +318,7 @@ ds_mgmt_drpc_pool_create(Drpc__Call *drpc_req, Drpc__Response *drpc_resp)
 
 	/* Ranks to allocate targets (in) & svc for pool replicas (out). */
 	rc = ds_mgmt_create_pool(pool_uuid, req->sys, "pmem", targets,
-				 req->scmbytes, req->nvmebytes,
+				 req->scmbytes, req->n_nvmebytes, req->nvmebytes,
 				 prop, req->numsvcreps, &svc,
 				 req->n_faultdomains, req->faultdomains);
 	if (targets != NULL)

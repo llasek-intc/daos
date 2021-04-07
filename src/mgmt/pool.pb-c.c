@@ -1350,13 +1350,13 @@ static const ProtobufCFieldDescriptor mgmt__pool_create_req__field_descriptors[1
   {
     "nvmebytes",
     14,
-    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_LABEL_REPEATED,
     PROTOBUF_C_TYPE_UINT64,
-    0,   /* quantifier_offset */
+    offsetof(Mgmt__PoolCreateReq, n_nvmebytes),
     offsetof(Mgmt__PoolCreateReq, nvmebytes),
     NULL,
     NULL,
-    0,             /* flags */
+    0 | PROTOBUF_C_FIELD_FLAG_PACKED,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
 };
@@ -1449,13 +1449,13 @@ static const ProtobufCFieldDescriptor mgmt__pool_create_resp__field_descriptors[
   {
     "nvme_bytes",
     5,
-    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_LABEL_REPEATED,
     PROTOBUF_C_TYPE_UINT64,
-    0,   /* quantifier_offset */
+    offsetof(Mgmt__PoolCreateResp, n_nvme_bytes),
     offsetof(Mgmt__PoolCreateResp, nvme_bytes),
     NULL,
     NULL,
-    0,             /* flags */
+    0 | PROTOBUF_C_FIELD_FLAG_PACKED,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
 };

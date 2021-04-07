@@ -52,7 +52,7 @@ rdb_create(const char *path, const uuid_t uuid, size_t size,
 	 * basic system memory reservation and VOS_POF_EXCL for concurrent
 	 * access protection.
 	 */
-	rc = vos_pool_create(path, (unsigned char *)uuid, size, 0 /* nvme_sz */,
+	rc = vos_pool_create(path, (unsigned char *)uuid, size, 0 /* tiers */, NULL,
 			     VOS_POF_SMALL | VOS_POF_EXCL, &pool);
 	if (rc != 0)
 		goto out;

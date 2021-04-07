@@ -37,7 +37,7 @@ type (
 		CurrentRankStr  string   // string rankset representing current ranks
 		currentRanks    *RankSet // used to reconstitute the rankset
 		ScmPerRank      uint64   // scm per rank allocated during creation
-		NVMePerRank     uint64   // nvme per rank allocated during creation
+		NVMePerRank     []uint64 // nvme per rank allocated during creation
 	}
 
 	// PoolService represents a pool service created to manage metadata
@@ -67,7 +67,7 @@ type (
 )
 
 // NewPoolService returns a properly-initialized *PoolService.
-func NewPoolService(uuid uuid.UUID, rankScm, rankNvme uint64, ranks []Rank) *PoolService {
+func NewPoolService(uuid uuid.UUID, rankScm uint64, rankNvme []uint64, ranks []Rank) *PoolService {
 	rs := RankSetFromRanks(ranks)
 	return &PoolService{
 		PoolUUID: uuid,
@@ -124,7 +124,11 @@ func (pss *PoolServiceStorage) TotalSCM() uint64 {
 // the pool, calculated from the current set of ranks multiplied
 // by the per-rank NVMe allocation made at creation time.
 func (pss *PoolServiceStorage) TotalNVMe() uint64 {
-	return uint64(len(pss.CurrentRanks())) * pss.NVMePerRank
+	var totalNvme uint64 = 0
+	for _, nvmeTierSize := range pss.NVMePerRank {
+		totalNvme += nvmeTierSize
+	}
+	return uint64(len(pss.CurrentRanks())) * totalNvme
 }
 
 func (pss *PoolServiceStorage) String() string {

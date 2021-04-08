@@ -35,6 +35,9 @@ extern const char	*dss_storage_path;
 /** NVMe config file */
 extern const char	*dss_nvme_conf;
 
+/** NVMe tiers */
+extern int			dss_nvme_tiers;
+
 /** Socket Directory */
 extern const char	*dss_socket_dir;
 

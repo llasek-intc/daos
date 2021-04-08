@@ -745,7 +745,7 @@ bio_write_blob_hdr(struct bio_io_context *ioctxt, struct bio_blob_hdr *bio_bh)
 	bio_bh->bbh_blob_id = blob_id;
 
 	/* Query per-server metadata to get device id for xs */
-	rc = smd_dev_get_by_tgt(bio_bh->bbh_vos_id, &dev_info);
+	rc = smd_dev_get_by_tgt(bio_bh->bbh_vos_id, 0, &dev_info);	// @todo_llasek: tiering
 	if (rc) {
 		D_ERROR("Not able to find device id/blobstore for tgt %d\n",
 			bio_bh->bbh_vos_id);

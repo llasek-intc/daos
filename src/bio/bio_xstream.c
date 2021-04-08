@@ -909,9 +909,6 @@ create_bio_bdev(struct bio_xs_context *ctxt, const char *bdev_name,
 		goto error;
 	}
 
-	d_bdev->bb_tier_id = bdev_name_to_tier_id(bdev_name);
-	D_INFO( "bdev `%s` is tier %d", d_bdev->bb_name, d_bdev->bb_tier_id );
-
 	/*
 	 * Hold the SPDK bdev by an open descriptor, otherwise, the bdev
 	 * could be deconstructed by SPDK on device hot remove.
@@ -963,6 +960,9 @@ create_bio_bdev(struct bio_xs_context *ctxt, const char *bdev_name,
 		rc = -DER_INVAL;
 		goto error;
 	}
+
+	d_bdev->bb_tier_id = bdev_name_to_tier_id(bdev_name);
+	D_DEBUG(DB_TIER, "bdev "DF_UUID" `%s` is tier %d", DP_UUID(bs_uuid), d_bdev->bb_name, d_bdev->bb_tier_id);
 
 	uuid_copy(d_bdev->bb_uuid, bs_uuid);
 	/* Verify if any duplicated device ID */
@@ -1183,35 +1183,39 @@ assign_device(int tgt_id)
 	struct bio_bdev	*d_bdev;
 	struct bio_bdev	*chosen_bdev;
 	int		 lowest_tgt_cnt, rc;
+	uint32_t lowest_tier_id;
 
 	D_ASSERT(!d_list_empty(&nvme_glb.bd_bdevs));
 	chosen_bdev = d_list_entry(nvme_glb.bd_bdevs.next, struct bio_bdev,
 				  bb_link);
 	lowest_tgt_cnt = chosen_bdev->bb_tgt_cnt;
+	lowest_tier_id = chosen_bdev->bb_tier_id;
 
 	/*
 	 * Traverse the list and return the device with the least amount of
 	 * mapped targets.
 	 */
 	d_list_for_each_entry(d_bdev, &nvme_glb.bd_bdevs, bb_link) {
-		if (d_bdev->bb_tgt_cnt < lowest_tgt_cnt) {
+		if (d_bdev->bb_tier_id < lowest_tier_id ||	// @todo_llasek: add tiering, pick the lowest tier now
+			d_bdev->bb_tgt_cnt < lowest_tgt_cnt) {
 			lowest_tgt_cnt = d_bdev->bb_tgt_cnt;
+			lowest_tier_id = d_bdev->bb_tier_id;
 			chosen_bdev = d_bdev;
 		}
 	}
 
 	/* Update mapping for this target in NVMe device table */
-	rc = smd_dev_add_tgt(chosen_bdev->bb_uuid, tgt_id);
+	rc = smd_dev_add_tgt(chosen_bdev->bb_uuid, tgt_id, chosen_bdev->bb_tier_id);
 	if (rc) {
-		D_ERROR("Failed to map dev "DF_UUID" to tgt %d. "DF_RC"\n",
-			DP_UUID(chosen_bdev->bb_uuid), tgt_id, DP_RC(rc));
+		D_ERROR("Failed to map dev "DF_UUID" to tgt %d, tier %d. "DF_RC"\n",
+			DP_UUID(chosen_bdev->bb_uuid), tgt_id, chosen_bdev->bb_tier_id, DP_RC(rc));
 		return rc;
 	}
 
 	chosen_bdev->bb_tgt_cnt++;
 
-	D_DEBUG(DB_MGMT, "Successfully mapped dev "DF_UUID"/%d to tgt %d\n",
-		DP_UUID(chosen_bdev->bb_uuid), chosen_bdev->bb_tgt_cnt, tgt_id);
+	D_DEBUG(DB_MGMT, "Successfully mapped dev "DF_UUID"/%d to tgt %d, tier %d\n",
+		DP_UUID(chosen_bdev->bb_uuid), chosen_bdev->bb_tgt_cnt, tgt_id, chosen_bdev->bb_tier_id);
 
 	return 0;
 }
@@ -1240,7 +1244,7 @@ init_blobstore_ctxt(struct bio_xs_context *ctxt, int tgt_id)
 	 * if found, create blobstore on the mapped device.
 	 */
 retry:
-	rc = smd_dev_get_by_tgt(tgt_id, &dev_info);
+	rc = smd_dev_get_by_tgt(tgt_id, 0, &dev_info);	// @todo_llasek: try dss_nvme_tiers
 	if (rc == -DER_NONEXIST && !assigned) {
 		rc = assign_device(tgt_id);
 		if (rc)
@@ -1248,7 +1252,7 @@ retry:
 		assigned = true;
 		goto retry;
 	} else if (rc) {
-		D_ERROR("Failed to get dev for tgt %d. "DF_RC"\n", tgt_id,
+		D_ERROR("Failed to get dev for tgt %d, tier 0. "DF_RC"\n", tgt_id,
 			DP_RC(rc));
 		return rc;
 	}

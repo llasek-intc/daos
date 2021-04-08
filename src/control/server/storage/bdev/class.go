@@ -215,6 +215,7 @@ func NewClassProvider(log logging.Logger, cfgDir string, cfg *storage.BdevTier) 
 	// Config file required; set this so it gets generated later
 	p.cfgPath = filepath.Join(cfgDir, confOut)
 	cfg.ConfigPath = p.cfgPath
+	cfg.TiersNum = len(cfg.Tier)
 	log.Debugf("output bdev conf file set to %s", p.cfgPath)
 
 	return p, nil

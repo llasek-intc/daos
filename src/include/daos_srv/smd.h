@@ -58,10 +58,11 @@ void smd_fini(void);
  *
  * \param [IN]	dev_id	NVMe device ID
  * \param [IN]	tgt_id	Target ID
+ * \param [IN]	tier_id	Tier ID
  *
  * \return		Zero on success, negative value on error
  */
-int smd_dev_add_tgt(uuid_t dev_id, uint32_t tgt_id);
+int smd_dev_add_tgt(uuid_t dev_id, uint32_t tgt_id, uint32_t tier_id);
 
 /**
  * Unassign a NVMe device from a target (VOS xstream)
@@ -97,11 +98,12 @@ int smd_dev_get_by_id(uuid_t dev_id, struct smd_dev_info **dev_info);
  * Get NVMe device info by target ID, caller is responsible to free @dev_info
  *
  * \param [IN]	tgt_id		Target ID
+ * \param [IN]	tier_id		Tier ID
  * \param [OUT]	dev_info	Device info
  *
  * \return			Zero on success, negative value on error
  */
-int smd_dev_get_by_tgt(uint32_t tgt_id, struct smd_dev_info **dev_info);
+int smd_dev_get_by_tgt(uint32_t tgt_id, uint32_t tier_id, struct smd_dev_info **dev_info);
 
 /**
  * List all NVMe devices, caller is responsible to free list items

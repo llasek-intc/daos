@@ -176,7 +176,7 @@ ds_mgmt_bio_health_query(struct mgmt_bio_health *mbh, uuid_t dev_uuid,
 		tgt_id = dev_info->sdi_tgts[0];
 	} else {
 		tgt_id = atoi(tgt);
-		rc = smd_dev_get_by_tgt(tgt_id, &dev_info);
+		rc = smd_dev_get_by_tgt(tgt_id, 0, &dev_info);	// @todo_llasek: tiering
 		if (rc != 0) {
 			D_ERROR("Tgt_id:%d not found\n", tgt_id);
 			return rc;

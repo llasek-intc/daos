@@ -53,6 +53,9 @@ const char	       *dss_storage_path = "/mnt/daos";
 /** NVMe config file */
 const char	       *dss_nvme_conf;
 
+/** NVMe tiers */
+int			dss_nvme_tiers = 1;
+
 /** Socket Directory */
 const char	       *dss_socket_dir = "/var/run/daos_server";
 
@@ -756,6 +759,8 @@ Options:\n\
       Directory where daos_server sockets are located (default \"%s\")\n\
   --nvme=config, -n config\n\
       NVMe config file (default \"%s\")\n\
+  --nvme_tiers=ntiers, -T ntiers (default 1)\n\
+      number of NVMe tiers\n\
   --shm_id=shm_id, -i shm_id\n\
       Shared segment ID (enable multi-process mode in SPDK, default none)\n\
   --instance_idx=idx, -I idx\n\
@@ -782,6 +787,7 @@ parse(int argc, char **argv)
 		{ "shm_id",		required_argument,	NULL,	'i' },
 		{ "modules",		required_argument,	NULL,	'm' },
 		{ "nvme",		required_argument,	NULL,	'n' },
+		{ "nvme_tiers",	required_argument,	NULL,	'T' },
 		{ "pinned_numa_node",	required_argument,	NULL,	'p' },
 		{ "mem_size",		required_argument,	NULL,	'r' },
 		{ "targets",		required_argument,	NULL,	't' },
@@ -795,7 +801,7 @@ parse(int argc, char **argv)
 
 	/* load all of modules by default */
 	sprintf(modules, "%s", MODULE_LIST);
-	while ((c = getopt_long(argc, argv, "c:d:f:g:hi:m:n:p:r:t:s:x:I:",
+	while ((c = getopt_long(argc, argv, "c:d:f:g:hi:m:n:T:p:r:t:s:x:I:",
 				opts, NULL)) != -1) {
 		switch (c) {
 		case 'm':
@@ -836,6 +842,14 @@ parse(int argc, char **argv)
 			break;
 		case 'n':
 			dss_nvme_conf = optarg;
+			break;
+		case 'T':
+			dss_nvme_tiers = atoi(optarg);
+			if (dss_nvme_tiers <= 0) {
+				printf("Needs at least 1 tier\n");
+				rc = -DER_INVAL;
+				break;
+			}
 			break;
 		case 'p':
 			dss_numa_node = atoi(optarg);

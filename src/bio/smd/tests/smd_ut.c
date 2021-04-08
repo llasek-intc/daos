@@ -257,21 +257,21 @@ ut_device(void **state)
 	uuid_generate(id3);
 
 	/* Assigned dev1 to target 0, 1, 2, dev2 to target 3 */
-	rc = smd_dev_add_tgt(dev_id1, 0);
+	rc = smd_dev_add_tgt(dev_id1, 0, 0);
 	assert_rc_equal(rc, 0);
 
-	rc = smd_dev_add_tgt(dev_id1, 0);
+	rc = smd_dev_add_tgt(dev_id1, 0, 0);
 	assert_rc_equal(rc, -DER_EXIST);
 
 	for (i = 1; i < 3; i++) {
-		rc = smd_dev_add_tgt(dev_id1, i);
+		rc = smd_dev_add_tgt(dev_id1, i, 0);
 		assert_rc_equal(rc, 0);
 	}
 
-	rc = smd_dev_add_tgt(dev_id2, 1);
+	rc = smd_dev_add_tgt(dev_id2, 1, 0);
 	assert_rc_equal(rc, -DER_EXIST);
 
-	rc = smd_dev_add_tgt(dev_id2, 3);
+	rc = smd_dev_add_tgt(dev_id2, 3, 0);
 	assert_rc_equal(rc, 0);
 
 	rc = smd_dev_set_state(dev_id2, SMD_DEV_FAULTY);
@@ -286,10 +286,10 @@ ut_device(void **state)
 
 	smd_dev_free_info(dev_info);
 
-	rc = smd_dev_get_by_tgt(4, &dev_info);
+	rc = smd_dev_get_by_tgt(4, 0, &dev_info);
 	assert_rc_equal(rc, -DER_NONEXIST);
 
-	rc = smd_dev_get_by_tgt(3, &dev_info);
+	rc = smd_dev_get_by_tgt(3, 0, &dev_info);
 	assert_rc_equal(rc, 0);
 	verify_dev(dev_info, dev_id2, 2);
 

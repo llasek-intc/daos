@@ -156,6 +156,7 @@ func (bc *BdevConfig) GetNvmeDevs() []string {
 type BdevTier struct {
 	ConfigPath string       `yaml:"-" cmdLongFlag:"--nvme" cmdShortFlag:"-n"`
 	MemSize    int          `yaml:"-" cmdLongFlag:"--mem_size,nonzero" cmdShortFlag:"-r,nonzero"`
+	TiersNum   int          `yaml:"-" cmdLongFlag:"--nvme_tiers" cmdShortFlag:"-T"`
 	Tier       []BdevConfig `yaml:"bdev_tier,omitempty"`
 }
 

@@ -59,11 +59,13 @@ static void
 bio_get_dev_state_internal(void *msg_arg)
 {
 	struct dev_state_msg_arg	*dsm = msg_arg;
+	struct bio_tier	*tier;
 
 	D_ASSERT(dsm != NULL);
+	tier = &dsm->xs->bxc_tier[0];	// @todo_llasek: tiering
 
-	dsm->devstate = dsm->xs->bxc_blobstore->bb_dev_health.bdh_health_state;
-	collect_bs_usage(dsm->xs->bxc_blobstore->bb_bs, &dsm->devstate);
+	dsm->devstate = tier->bt_blobstore->bb_dev_health.bdh_health_state;
+	collect_bs_usage(tier->bt_blobstore->bb_bs, &dsm->devstate);
 	ABT_eventual_set(dsm->eventual, NULL, 0);
 }
 
@@ -71,15 +73,17 @@ static void
 bio_dev_set_faulty_internal(void *msg_arg)
 {
 	struct dev_state_msg_arg	*dsm = msg_arg;
+	struct bio_tier	*tier;
 	int				 rc;
 
 	D_ASSERT(dsm != NULL);
+	tier = &dsm->xs->bxc_tier[0];	// @todo_llasek: tiering
 
-	rc = bio_bs_state_set(dsm->xs->bxc_blobstore, BIO_BS_STATE_FAULTY);
+	rc = bio_bs_state_set(tier->bt_blobstore, BIO_BS_STATE_FAULTY);
 	if (rc)
 		D_ERROR("BIO FAULTY state set failed, rc=%d\n", rc);
 
-	rc = bio_bs_state_transit(dsm->xs->bxc_blobstore);
+	rc = bio_bs_state_transit(tier->bt_blobstore);
 	if (rc)
 		D_ERROR("State transition failed, rc=%d\n", rc);
 
@@ -91,11 +95,12 @@ void
 bio_log_csum_err(struct bio_xs_context *bxc, int tgt_id)
 {
 	struct media_error_msg	*mem;
+	struct bio_tier	*tier = &bxc->bxc_tier[0];	// @todo_llasek: tiering
 
 	D_ALLOC_PTR(mem);
 	if (mem == NULL)
 		return;
-	mem->mem_bs		= bxc->bxc_blobstore;
+	mem->mem_bs		= tier->bt_blobstore;
 	mem->mem_err_type	= MET_CSUM;
 	mem->mem_tgt_id		= tgt_id;
 	spdk_thread_send_msg(owner_thread(mem->mem_bs), bio_media_error, mem);
@@ -107,6 +112,7 @@ int
 bio_get_dev_state(struct nvme_stats *state, struct bio_xs_context *xs)
 {
 	struct dev_state_msg_arg	 dsm = { 0 };
+	struct bio_tier	*tier = &xs->bxc_tier[0];	// @todo_llasek: tiering
 	int				 rc;
 
 	rc = ABT_eventual_create(0, &dsm.eventual);
@@ -115,7 +121,7 @@ bio_get_dev_state(struct nvme_stats *state, struct bio_xs_context *xs)
 
 	dsm.xs = xs;
 
-	spdk_thread_send_msg(owner_thread(xs->bxc_blobstore),
+	spdk_thread_send_msg(owner_thread(tier->bt_blobstore),
 			     bio_get_dev_state_internal, &dsm);
 	rc = ABT_eventual_wait(dsm.eventual, NULL);
 	if (rc != ABT_SUCCESS)
@@ -136,7 +142,8 @@ bio_get_dev_state(struct nvme_stats *state, struct bio_xs_context *xs)
 void
 bio_get_bs_state(int *bs_state, struct bio_xs_context *xs)
 {
-	*bs_state = xs->bxc_blobstore->bb_state;
+	struct bio_tier	*tier = &xs->bxc_tier[0];	// @todo_llasek: tiering
+	*bs_state = tier->bt_blobstore->bb_state;
 }
 
 /*
@@ -147,6 +154,7 @@ int
 bio_dev_set_faulty(struct bio_xs_context *xs)
 {
 	struct dev_state_msg_arg	dsm = { 0 };
+	struct bio_tier	*tier = &xs->bxc_tier[0];	// @todo_llasek: tiering
 	int				rc;
 	int				*dsm_rc;
 
@@ -156,7 +164,7 @@ bio_dev_set_faulty(struct bio_xs_context *xs)
 
 	dsm.xs = xs;
 
-	spdk_thread_send_msg(owner_thread(xs->bxc_blobstore),
+	spdk_thread_send_msg(owner_thread(tier->bt_blobstore),
 			     bio_dev_set_faulty_internal, &dsm);
 	rc = ABT_eventual_wait(dsm.eventual, (void **)&dsm_rc);
 	if (rc == 0)
@@ -173,12 +181,13 @@ bio_dev_set_faulty(struct bio_xs_context *xs)
 static inline struct bio_dev_health *
 xs_ctxt2dev_health(struct bio_xs_context *ctxt)
 {
+	struct bio_tier	*tier = &ctxt->bxc_tier[0];	// @todo_llasek: tiering
 	D_ASSERT(ctxt != NULL);
 	/* bio_xsctxt_free() is underway */
-	if (ctxt->bxc_blobstore == NULL)
+	if (tier->bt_blobstore == NULL)
 		return NULL;
 
-	return &ctxt->bxc_blobstore->bb_dev_health;
+	return &tier->bt_blobstore->bb_dev_health;
 }
 
 static void
@@ -464,11 +473,12 @@ bio_bs_monitor(struct bio_xs_context *ctxt, uint64_t now)
 {
 	struct bio_dev_health	*dev_health;
 	struct bio_blobstore	*bbs;
+	struct bio_tier	*tier = &ctxt->bxc_tier[0];	// @todo_llasek: tiering
 	int			 rc;
 	uint64_t		 monitor_period;
 
 	D_ASSERT(ctxt != NULL);
-	bbs = ctxt->bxc_blobstore;
+	bbs = tier->bt_blobstore;
 
 	D_ASSERT(bbs != NULL);
 	dev_health = &bbs->bb_dev_health;
@@ -503,21 +513,22 @@ bio_xs_io_stat(struct bio_xs_context *ctxt, uint64_t now)
 	struct spdk_bdev_io_stat	 stat;
 	struct spdk_bdev		*bdev;
 	struct spdk_io_channel		*channel;
+	struct bio_tier	*tier = &ctxt->bxc_tier[0];	// @todo_llasek: tiering
 
 	/* check if IO_STAT_PERIOD environment variable is set */
 	if (io_stat_period == 0)
 		return;
 
-	if (ctxt->bxc_io_stat_age + io_stat_period >= now)
+	if (tier->bt_io_stat_age + io_stat_period >= now)
 		return;
 
-	if (ctxt->bxc_desc != NULL) {
-		channel = spdk_bdev_get_io_channel(ctxt->bxc_desc);
+	if (tier->bt_desc != NULL) {
+		channel = spdk_bdev_get_io_channel(tier->bt_desc);
 		D_ASSERT(channel != NULL);
 		spdk_bdev_get_io_stat(NULL, channel, &stat);
 		spdk_put_io_channel(channel);
 
-		bdev = spdk_bdev_desc_get_bdev(ctxt->bxc_desc);
+		bdev = spdk_bdev_desc_get_bdev(tier->bt_desc);
 
 		D_ASSERT(bdev != NULL);
 
@@ -531,7 +542,7 @@ bio_xs_io_stat(struct bio_xs_context *ctxt, uint64_t now)
 			stat.write_latency_ticks);
 	}
 
-	ctxt->bxc_io_stat_age = now;
+	tier->bt_io_stat_age = now;
 }
 
 /* Free all device health monitoring info */

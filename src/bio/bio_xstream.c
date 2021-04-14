@@ -1065,12 +1065,13 @@ put_bio_blobstore(struct bio_blobstore *bb, struct bio_xs_context *ctxt)
 {
 	struct spdk_blob_store	*bs = NULL;
 	struct bio_io_context	*ioc, *tmp;
+	struct bio_tier	*tier = &ctxt->bxc_tier[0];	// @todo_llasek: tiering
 	int			i, xs_cnt_max = BIO_XS_CNT_MAX;
 
-	d_list_for_each_entry_safe(ioc, tmp, &ctxt->bxc_io_ctxts, bic_link) {
-		d_list_del_init(&ioc->bic_link);
-		if (ioc->bic_blob != NULL)
-			D_WARN("Pool isn't closed. tgt:%d\n", ctxt->bxc_tgt_id);
+	d_list_for_each_entry_safe(ioc, tmp, &tier->bt_io_ctxts, bic_tier[0].bit_link) {	// @todo_llasek: tiering
+		d_list_del_init(&ioc->bic_tier[0].bit_link);	// @todo_llasek: tiering
+		if (ioc->bic_tier[0].bit_blob != NULL)	// @todo_llasek: tiering
+			D_WARN("Pool isn't closed. tgt:%d\n", tier->bt_id);
 	}
 
 	ABT_mutex_lock(bb->bb_mutex);
@@ -1187,31 +1188,31 @@ get_bio_blobstore(struct bio_blobstore *bb, struct bio_xs_context *ctxt)
  * with the least amount of mapped targets(VOS xstreams).
  */
 static int
-assign_device(int tgt_id)
+assign_device(int tgt_id, int tier_id)
 {
 	struct bio_bdev	*d_bdev;
 	struct bio_bdev	*chosen_bdev;
 	int		 lowest_tgt_cnt, rc;
-	uint32_t lowest_tier_id;
 
 	D_ASSERT(!d_list_empty(&nvme_glb.bd_bdevs));
-	chosen_bdev = d_list_entry(nvme_glb.bd_bdevs.next, struct bio_bdev,
-				  bb_link);
-	lowest_tgt_cnt = chosen_bdev->bb_tgt_cnt;
-	lowest_tier_id = chosen_bdev->bb_tier_id;
+	chosen_bdev = NULL;
 
 	/*
 	 * Traverse the list and return the device with the least amount of
 	 * mapped targets.
 	 */
 	d_list_for_each_entry(d_bdev, &nvme_glb.bd_bdevs, bb_link) {
-		if (d_bdev->bb_tier_id < lowest_tier_id ||	// @todo_llasek: add tiering, pick the lowest tier now
-			d_bdev->bb_tgt_cnt < lowest_tgt_cnt) {
-			lowest_tgt_cnt = d_bdev->bb_tgt_cnt;
-			lowest_tier_id = d_bdev->bb_tier_id;
-			chosen_bdev = d_bdev;
+		if (d_bdev->bb_tier_id == tier_id)
+		{
+			if (!chosen_bdev || d_bdev->bb_tgt_cnt < lowest_tgt_cnt)
+			{
+				chosen_bdev = d_bdev;
+				lowest_tgt_cnt = d_bdev->bb_tgt_cnt;
+			}
 		}
 	}
+
+	D_ASSERT(chosen_bdev != NULL);
 
 	/* Update mapping for this target in NVMe device table */
 	rc = smd_dev_add_tgt(chosen_bdev->bb_uuid, tgt_id, chosen_bdev->bb_tier_id);
@@ -1230,18 +1231,19 @@ assign_device(int tgt_id)
 }
 
 static int
-init_blobstore_ctxt(struct bio_xs_context *ctxt, int tgt_id)
+init_blobstore_ctxt(struct bio_xs_context *ctxt, int tgt_id, int tier_id)
 {
 	struct bio_bdev		*d_bdev;
+	struct bio_tier		*tier = &ctxt->bxc_tier[tier_id];
 	struct bio_blobstore	*bbs;
 	struct spdk_blob_store	*bs;
 	struct smd_dev_info	*dev_info = NULL;
 	bool			 assigned = false;
 	int			 rc;
 
-	D_ASSERT(ctxt->bxc_desc == NULL);
-	D_ASSERT(ctxt->bxc_blobstore == NULL);
-	D_ASSERT(ctxt->bxc_io_channel == NULL);
+	D_ASSERT(tier->bt_desc == NULL);
+	D_ASSERT(tier->bt_blobstore == NULL);
+	D_ASSERT(tier->bt_io_channel == NULL);
 
 	if (d_list_empty(&nvme_glb.bd_bdevs)) {
 		D_ERROR("No available SPDK bdevs, please check whether "
@@ -1254,15 +1256,15 @@ init_blobstore_ctxt(struct bio_xs_context *ctxt, int tgt_id)
 	 * if found, create blobstore on the mapped device.
 	 */
 retry:
-	rc = smd_dev_get_by_tgt(tgt_id, 0, &dev_info);	// @todo_llasek: try dss_nvme_tiers
+	rc = smd_dev_get_by_tgt(tgt_id, tier_id, &dev_info);
 	if (rc == -DER_NONEXIST && !assigned) {
-		rc = assign_device(tgt_id);
+		rc = assign_device(tgt_id, tier_id);
 		if (rc)
 			return rc;
 		assigned = true;
 		goto retry;
 	} else if (rc) {
-		D_ERROR("Failed to get dev for tgt %d, tier 0. "DF_RC"\n", tgt_id,
+		D_ERROR("Failed to get dev for tgt %d, tier %d. "DF_RC"\n", tgt_id, tier_id,
 			DP_RC(rc));
 		return rc;
 	}
@@ -1303,12 +1305,12 @@ retry:
 	}
 
 	/* Hold bbs refcount for current xstream */
-	ctxt->bxc_blobstore = get_bio_blobstore(d_bdev->bb_blobstore, ctxt);
-	if (ctxt->bxc_blobstore == NULL) {
+	tier->bt_blobstore = get_bio_blobstore(d_bdev->bb_blobstore, ctxt);
+	if (tier->bt_blobstore == NULL) {
 		rc = -DER_NOMEM;
 		goto out;
 	}
-	bbs = ctxt->bxc_blobstore;
+	bbs = tier->bt_blobstore;
 
 	/*
 	 * bbs owner xstream is responsible to initialize monitoring context
@@ -1357,8 +1359,8 @@ retry:
 	/* Open IO channel for current xstream */
 	bs = bbs->bb_bs;
 	D_ASSERT(bs != NULL);
-	ctxt->bxc_io_channel = spdk_bs_alloc_io_channel(bs);
-	if (ctxt->bxc_io_channel == NULL) {
+	tier->bt_io_channel = spdk_bs_alloc_io_channel(bs);
+	if (tier->bt_io_channel == NULL) {
 		D_ERROR("Failed to create io channel\n");
 		rc = -DER_NOMEM;
 		goto out;
@@ -1366,7 +1368,7 @@ retry:
 
 	/* generic read only descriptor (currently used for IO stats) */
 	rc = spdk_bdev_open_ext(d_bdev->bb_name, false, bio_bdev_event_cb,
-				NULL, &ctxt->bxc_desc);
+				NULL, &tier->bt_desc);
 	if (rc != 0) {
 		D_ERROR("Failed to open bdev %s, %d\n", d_bdev->bb_name, rc);
 		rc = daos_errno2der(-rc);
@@ -1389,29 +1391,34 @@ out:
 void
 bio_xsctxt_free(struct bio_xs_context *ctxt)
 {
+	int tier_id;
 	int	rc = 0;
 
 	/* NVMe context setup was skipped */
 	if (ctxt == NULL)
 		return;
 
-	if (ctxt->bxc_io_channel != NULL) {
-		spdk_bs_free_io_channel(ctxt->bxc_io_channel);
-		ctxt->bxc_io_channel = NULL;
-	}
+	for (tier_id = 0; tier_id < ctxt->bxc_tiers_nr; tier_id++)
+	{
+		struct bio_tier *tier = &ctxt->bxc_tier[tier_id];
+		if (tier->bt_io_channel != NULL) {
+			spdk_bs_free_io_channel(tier->bt_io_channel);
+			tier->bt_io_channel = NULL;
+		}
 
-	if (ctxt->bxc_blobstore != NULL) {
-		put_bio_blobstore(ctxt->bxc_blobstore, ctxt);
+		if (tier->bt_blobstore != NULL) {
+			put_bio_blobstore(tier->bt_blobstore, ctxt);
 
-		if (is_bbs_owner(ctxt, ctxt->bxc_blobstore))
-			bio_fini_health_monitoring(ctxt->bxc_blobstore);
+			if (is_bbs_owner(ctxt, tier->bt_blobstore))
+				bio_fini_health_monitoring(tier->bt_blobstore);
 
-		ctxt->bxc_blobstore = NULL;
-	}
+			tier->bt_blobstore = NULL;
+		}
 
-	if (ctxt->bxc_desc != NULL) {
-		spdk_bdev_close(ctxt->bxc_desc);
-		ctxt->bxc_desc = NULL;
+		if (tier->bt_desc != NULL) {
+			spdk_bdev_close(tier->bt_desc);
+			tier->bt_desc = NULL;
+		}
 	}
 
 	ABT_mutex_lock(nvme_glb.bd_mutex);
@@ -1480,10 +1487,11 @@ bio_xsctxt_free(struct bio_xs_context *ctxt)
 }
 
 int
-bio_xsctxt_alloc(struct bio_xs_context **pctxt, int tgt_id)
+bio_xsctxt_alloc(struct bio_xs_context **pctxt, int tgt_id, int tiers_nr)
 {
 	struct bio_xs_context	*ctxt;
 	char			 th_name[32];
+	int tier_id;
 	int			 rc;
 
 	/* Skip NVMe context setup if the daos_nvme.conf isn't present */
@@ -1496,7 +1504,6 @@ bio_xsctxt_alloc(struct bio_xs_context **pctxt, int tgt_id)
 	if (ctxt == NULL)
 		return -DER_NOMEM;
 
-	D_INIT_LIST_HEAD(&ctxt->bxc_io_ctxts);
 	ctxt->bxc_tgt_id = tgt_id;
 
 	ABT_mutex_lock(nvme_glb.bd_mutex);
@@ -1504,7 +1511,7 @@ bio_xsctxt_alloc(struct bio_xs_context **pctxt, int tgt_id)
 	nvme_glb.bd_xstream_cnt++;
 
 	D_INFO("Initialize NVMe context, tgt_id:%d, init_thread:%p\n",
-	       tgt_id, nvme_glb.bd_init_thread);
+		tgt_id, nvme_glb.bd_init_thread);
 
 	/*
 	 * Register SPDK thread beforehand, it could be used for poll device
@@ -1512,7 +1519,7 @@ bio_xsctxt_alloc(struct bio_xs_context **pctxt, int tgt_id)
 	 * spdk_subsystem_init() call, it also could be used for blobstore
 	 * metadata io channel in following init_bio_bdevs() call.
 	 */
-	snprintf(th_name, sizeof(th_name), "daos_spdk_%d", tgt_id);
+	snprintf(th_name, sizeof(th_name), "daos_spdk_%d_%d", tgt_id, tier_id);
 	ctxt->bxc_thread = spdk_thread_create((const char *)th_name, NULL);
 	if (ctxt->bxc_thread == NULL) {
 		D_ERROR("failed to alloc SPDK thread\n");
@@ -1557,10 +1564,23 @@ bio_xsctxt_alloc(struct bio_xs_context **pctxt, int tgt_id)
 		}
 	}
 
-	/* Initialize per-xstream blobstore context */
-	rc = init_blobstore_ctxt(ctxt, tgt_id);
-	if (rc)
-		goto out;
+
+	/* Initialize all tiers */
+	ctxt->bxc_tiers_nr = tiers_nr;
+	for (tier_id = 0; tier_id < tiers_nr; tier_id++)
+	{
+		struct bio_tier *tier = &ctxt->bxc_tier[tier_id];
+		D_INIT_LIST_HEAD(&tier->bt_io_ctxts);
+		tier->bt_id = tier_id;
+
+		D_INFO("Initialize NVMe tier context, tgt_id:%d, tier_id:%d\n",
+			tgt_id, tier_id);
+
+		/* Initialize per-xstream blobstore context */
+		rc = init_blobstore_ctxt(ctxt, tgt_id, tier_id);
+		if (rc)
+			goto out;
+	}
 
 	ctxt->bxc_dma_buf = dma_buffer_create(bio_chk_cnt_init);
 	if (ctxt->bxc_dma_buf == NULL) {
@@ -1761,6 +1781,8 @@ bio_led_event_monitor(struct bio_xs_context *ctxt, uint64_t now)
 int
 bio_nvme_poll(struct bio_xs_context *ctxt)
 {
+	struct bio_tier	*tier;
+	int tier_id;
 	uint64_t now = d_timeus_secdiff(0);
 	int rc;
 
@@ -1785,9 +1807,12 @@ bio_nvme_poll(struct bio_xs_context *ctxt)
 	 * Query and print the SPDK device health stats for only the device
 	 * owner xstream.
 	 */
-	if (ctxt->bxc_blobstore != NULL &&
-	    is_bbs_owner(ctxt, ctxt->bxc_blobstore))
-		bio_bs_monitor(ctxt, now);
+	for (tier_id = 0; tier_id < ctxt->bxc_tiers_nr; tier_id++) {
+		tier = &ctxt->bxc_tier[tier_id];
+		if (tier->bt_blobstore != NULL &&
+			is_bbs_owner(ctxt, tier->bt_blobstore))
+			bio_bs_monitor(ctxt, now);
+	}
 
 	if (is_init_xstream(ctxt)) {
 		scan_bio_bdevs(ctxt, now);

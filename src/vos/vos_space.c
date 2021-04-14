@@ -38,7 +38,7 @@ void
 vos_space_sys_init(struct vos_pool *pool)
 {
 	daos_size_t	scm_tot = pool->vp_pool_df->pd_scm_sz;
-	daos_size_t	nvme_tot = pool->vp_pool_df->pd_nvme_sz;
+	daos_size_t	nvme_tot = pool->vp_pool_df->pd_nvme_tier0_sz;	// @todo_llasek: tier id
 
 	POOL_SCM_SYS(pool) =
 		get_frag_overhead(scm_tot, DAOS_MEDIA_SCM, pool->vp_small);
@@ -71,7 +71,7 @@ int
 vos_space_sys_set(struct vos_pool *pool, daos_size_t *space_sys)
 {
 	daos_size_t	scm_tot = pool->vp_pool_df->pd_scm_sz;
-	daos_size_t	nvme_tot = pool->vp_pool_df->pd_nvme_sz;
+	daos_size_t	nvme_tot = pool->vp_pool_df->pd_nvme_tier0_sz;	// @todo_llasek: tier id
 	daos_size_t	old_sys[DAOS_MEDIA_MAX];
 
 	/* Save old value */
@@ -113,7 +113,7 @@ vos_space_query(struct vos_pool *pool, struct vos_pool_space *vps, bool slow)
 	int			 rc;
 
 	SCM_TOTAL(vps) = df->pd_scm_sz;
-	NVME_TOTAL(vps) = df->pd_nvme_sz;
+	NVME_TOTAL(vps) = df->pd_nvme_tier0_sz;	// @todo_llasek: tier id
 	SCM_SYS(vps) = POOL_SCM_SYS(pool);
 	NVME_SYS(vps) = POOL_NVME_SYS(pool);
 

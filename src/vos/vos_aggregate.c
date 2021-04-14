@@ -1061,6 +1061,8 @@ fill_one_segment(daos_handle_t ih, struct agg_merge_window *mw,
 	iov.iov_buf = io->ic_buf;
 	iov.iov_buf_len = io->ic_buf_len;
 	iov.iov_len = seg_size;
+
+	bio_nvme_tier_set(&addr_dst, 0);	// @todo_llasek: tiering
 	rc = bio_write(bio_ctxt, addr_dst, &iov);
 	if (rc)
 		D_ERROR("Write "DF_RECT" error: "DF_RC"\n",

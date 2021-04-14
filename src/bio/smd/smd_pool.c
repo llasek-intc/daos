@@ -29,13 +29,15 @@ smd_pool_find_tgt(struct smd_pool *pool, int tgt_id)
 }
 
 int
-smd_pool_add_tgt(uuid_t pool_id, uint32_t tgt_id, uint64_t blob_id,
+smd_pool_add_tgt(uuid_t pool_id, uint32_t tgt_id, uint32_t tier_id, uint64_t blob_id,
 		 uint64_t blob_sz)
 {
 	struct smd_pool	pool;
 	struct d_uuid	id;
+	uint32_t		smd_tgt_id;
 	int		rc;
 
+	smd_tgt_id = make_smd_target_id(tgt_id, tier_id);
 	uuid_copy(id.uuid, pool_id);
 
 	smd_db_lock();
@@ -59,19 +61,19 @@ smd_pool_add_tgt(uuid_t pool_id, uint32_t tgt_id, uint64_t blob_id,
 			goto out;
 		}
 
-		rc = smd_pool_find_tgt(&pool, tgt_id);
+		rc = smd_pool_find_tgt(&pool, smd_tgt_id);
 		if (rc >= 0) {
-			D_ERROR("Dup target %d, idx: %d\n", tgt_id, rc);
+			D_ERROR("Dup target %d tier %d, idx: %d\n", tgt_id, tier_id, rc);
 			rc = -DER_EXIST;
 			goto out;
 		}
 
-		pool.sp_tgts[pool.sp_tgt_cnt] = tgt_id;
+		pool.sp_tgts[pool.sp_tgt_cnt] = smd_tgt_id;
 		pool.sp_blobs[pool.sp_tgt_cnt] = blob_id;
 		pool.sp_tgt_cnt += 1;
 
 	} else if (rc == -DER_NONEXIST) {
-		pool.sp_tgts[0]	 = tgt_id;
+		pool.sp_tgts[0]	 = smd_tgt_id;
 		pool.sp_blobs[0] = blob_id;
 		pool.sp_tgt_cnt	 = 1;
 		pool.sp_blob_sz  = blob_sz;
@@ -207,10 +209,11 @@ out:
 }
 
 int
-smd_pool_get_blob(uuid_t pool_id, uint32_t tgt_id, uint64_t *blob_id)
+smd_pool_get_blob(uuid_t pool_id, uint32_t tgt_id, uint32_t tier_id, uint64_t *blob_id)
 {
 	struct smd_pool	pool;
 	struct d_uuid	id;
+	uint32_t		smd_tgt_id;
 	int		rc;
 
 	uuid_copy(id.uuid, pool_id);
@@ -224,10 +227,11 @@ smd_pool_get_blob(uuid_t pool_id, uint32_t tgt_id, uint64_t *blob_id)
 		goto out;
 	}
 
-	rc = smd_pool_find_tgt(&pool, tgt_id);
+	smd_tgt_id = make_smd_target_id(tgt_id, tier_id);
+	rc = smd_pool_find_tgt(&pool, smd_tgt_id);
 	if (rc < 0) {
-		D_DEBUG(DB_MGMT, "Pool "DF_UUID" target %d not found.\n",
-			DP_UUID(id.uuid), tgt_id);
+		D_DEBUG(DB_MGMT, "Pool "DF_UUID" target %d, tier %d not found.\n",
+			DP_UUID(id.uuid), tgt_id, tier_id);
 		rc = -DER_NONEXIST;
 		goto out;
 	}

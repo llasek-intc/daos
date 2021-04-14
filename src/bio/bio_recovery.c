@@ -62,6 +62,7 @@ teardown_xstream(void *arg)
 {
 	struct bio_xs_context	*xs_ctxt = arg;
 	struct bio_io_context	*ioc;
+	int tier_id;
 	int			 opened_blobs = 0;
 
 	D_ASSERT(xs_ctxt != NULL);
@@ -70,38 +71,42 @@ teardown_xstream(void *arg)
 		return;
 	}
 
-	/* This xstream is torndown */
-	if (xs_ctxt->bxc_io_channel == NULL)
-		return;
-
-	/* Try to close all blobs */
-	d_list_for_each_entry(ioc, &xs_ctxt->bxc_io_ctxts, bic_link) {
-		if (ioc->bic_blob == NULL && ioc->bic_opening == 0)
+	for (tier_id = 0; tier_id < xs_ctxt->bxc_tiers_nr; tier_id++) {
+		struct bio_tier	*tier = &xs_ctxt->bxc_tier[tier_id];
+		/* This tier is torndown */
+		if (tier->bt_io_channel == NULL)
 			continue;
 
-		opened_blobs++;
-		if (ioc->bic_closing || ioc->bic_opening)
+		/* Try to close all blobs */
+		d_list_for_each_entry(ioc, &tier->bt_io_ctxts, bic_tier[tier_id].bit_link) {
+			if (ioc->bic_tier[tier_id].bit_blob == NULL && ioc->bic_opening == 0)
+				continue;
+
+			opened_blobs++;
+			if (ioc->bic_closing || ioc->bic_opening)
+				continue;
+
+			bio_blob_close(ioc, tier_id, true);
+		}
+
+		if (opened_blobs) {
+			D_DEBUG(DB_MGMT, "xs:%p has %d opened blobs\n",
+				xs_ctxt, opened_blobs);
+			opened_blobs = 0;
 			continue;
+		}
 
-		bio_blob_close(ioc, true);
-	}
+		/* Close open desc for io stats */
+		if (tier->bt_desc != NULL) {
+			spdk_bdev_close(tier->bt_desc);
+			tier->bt_desc = NULL;
+		}
 
-	if (opened_blobs) {
-		D_DEBUG(DB_MGMT, "xs:%p has %d opened blobs\n",
-			xs_ctxt, opened_blobs);
-		return;
-	}
-
-	/* Close open desc for io stats */
-	if (xs_ctxt->bxc_desc != NULL) {
-		spdk_bdev_close(xs_ctxt->bxc_desc);
-		xs_ctxt->bxc_desc = NULL;
-	}
-
-	/* Put the io channel */
-	if (xs_ctxt->bxc_io_channel != NULL) {
-		spdk_bs_free_io_channel(xs_ctxt->bxc_io_channel);
-		xs_ctxt->bxc_io_channel = NULL;
+		/* Put the io channel */
+		if (tier->bt_io_channel != NULL) {
+			spdk_bs_free_io_channel(tier->bt_io_channel);
+			tier->bt_io_channel = NULL;
+		}
 	}
 }
 
@@ -158,7 +163,7 @@ on_teardown(struct bio_blobstore *bbs)
 		struct bio_xs_context	*xs_ctxt = bbs->bb_xs_ctxts[i];
 
 		/* This xstream is torndown */
-		if (xs_ctxt->bxc_io_channel == NULL)
+		if (xs_ctxt->bxc_tier[0].bt_io_channel == NULL)	// @todo_llasek: tiering
 			continue;
 
 		D_ASSERT(xs_ctxt->bxc_thread != NULL);
@@ -208,6 +213,7 @@ setup_xstream(void *arg)
 	struct bio_blobstore	*bbs;
 	struct bio_bdev		*d_bdev;
 	struct bio_io_context	*ioc;
+	struct bio_tier	*tier = &xs_ctxt->bxc_tier[0];	// @todo_llasek: tiering
 	int			 rc, closed_blobs = 0;
 
 	D_ASSERT(xs_ctxt != NULL);
@@ -216,7 +222,7 @@ setup_xstream(void *arg)
 		return;
 	}
 
-	bbs = xs_ctxt->bxc_blobstore;
+	bbs = tier->bt_blobstore;
 	D_ASSERT(bbs != NULL);
 	D_ASSERT(bbs->bb_bs != NULL);
 
@@ -225,24 +231,24 @@ setup_xstream(void *arg)
 	 * of xstream setup, since xstream teardown checks io channel to tell
 	 * if everything is torndown for the xstream.
 	 */
-	if (xs_ctxt->bxc_io_channel == NULL) {
-		xs_ctxt->bxc_io_channel = spdk_bs_alloc_io_channel(bbs->bb_bs);
-		if (xs_ctxt->bxc_io_channel == NULL) {
+	if (tier->bt_io_channel == NULL) {
+		tier->bt_io_channel = spdk_bs_alloc_io_channel(bbs->bb_bs);
+		if (tier->bt_io_channel == NULL) {
 			D_ERROR("Failed to create io channel for %p\n", bbs);
 			return;
 		}
 	}
 
 	/* Try to open all blobs */
-	d_list_for_each_entry(ioc, &xs_ctxt->bxc_io_ctxts, bic_link) {
-		if (ioc->bic_blob != NULL && !ioc->bic_closing)
+	d_list_for_each_entry(ioc, &tier->bt_io_ctxts, bic_tier[0].bit_link) {	// @todo_llasek: tiering
+		if (ioc->bic_tier[0].bit_blob != NULL && !ioc->bic_closing)	// @todo_llasek: tiering
 			continue;
 
 		closed_blobs++;
 		if (ioc->bic_opening || ioc->bic_closing)
 			continue;
 
-		bio_blob_open(ioc, true);
+		bio_blob_open(ioc, 0, true);	// @todo_llasek: tiering
 	}
 
 	if (closed_blobs) {
@@ -256,16 +262,16 @@ setup_xstream(void *arg)
 	D_ASSERT(d_bdev->bb_name != NULL);
 
 	/* Acquire open desc for io stats as the last step of xs setup */
-	if (xs_ctxt->bxc_desc == NULL) {
+	if (tier->bt_desc == NULL) {
 		rc = spdk_bdev_open_ext(d_bdev->bb_name, false,
 					bio_bdev_event_cb, NULL,
-					&xs_ctxt->bxc_desc);
+					&tier->bt_desc);
 		if (rc != 0) {
 			D_ERROR("Failed to open bdev %s, for %p, %d\n",
 				d_bdev->bb_name, bbs, rc);
 			return;
 		}
-		D_ASSERT(xs_ctxt->bxc_desc != NULL);
+		D_ASSERT(tier->bt_desc != NULL);
 	}
 }
 
@@ -362,7 +368,7 @@ bs_loaded:
 		struct bio_xs_context	*xs_ctxt = bbs->bb_xs_ctxts[i];
 
 		/* Setup for the xsteam is done */
-		if (xs_ctxt->bxc_desc != NULL)
+		if (xs_ctxt->bxc_tier[0].bt_desc != NULL)	// @todo_llasek: tiering
 			continue;
 
 		D_ASSERT(xs_ctxt->bxc_thread != NULL);

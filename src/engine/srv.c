@@ -416,7 +416,7 @@ dss_srv_handler(void *arg)
 		ABT_thread_attr attr;
 
 		/* Initialize NVMe context for main XS which accesses NVME */
-		rc = bio_xsctxt_alloc(&dmi->dmi_nvme_ctxt, dmi->dmi_tgt_id);
+		rc = bio_xsctxt_alloc(&dmi->dmi_nvme_ctxt, dmi->dmi_tgt_id, dss_nvme_tiers);
 		if (rc != 0) {
 			D_ERROR("failed to init spdk context for xstream(%d) "
 				"rc:%d\n", dmi->dmi_xs_id, rc);

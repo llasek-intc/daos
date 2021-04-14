@@ -15,10 +15,6 @@ struct smd_device {
 	uint32_t		sd_tgts[SMD_MAX_TGT_CNT];
 };
 
-#define TARGET_ID_MASK	(0x00ffffff)
-#define TIER_ID_MASK	(0xff)
-#define TIER_ID_SHIFT	(24)
-
 static int
 test_target_id(uint32_t tgt_id, uint32_t tier_id)
 {
@@ -28,12 +24,6 @@ test_target_id(uint32_t tgt_id, uint32_t tier_id)
 		return -DER_INVAL;
 	}
 	return 0;
-}
-
-static uint32_t
-make_smd_target_id(uint32_t tgt_id, uint32_t tier_id)
-{
-	return tgt_id | (tier_id << TIER_ID_SHIFT);
 }
 
 int

@@ -1342,7 +1342,7 @@ recx_iter_copy(struct vos_obj_iter *oiter, vos_iter_entry_t *it_entry,
 	iov_out->iov_len = bio_iov2len(biov);
 	bioc = oiter->it_obj->obj_cont->vc_pool->vp_io_ctxt;
 	D_ASSERT(bioc != NULL);
-
+	bio_nvme_tier_set(&biov->bi_addr, 0);	// @todo_llasek: tiering
 	return bio_read(bioc, biov->bi_addr, iov_out);
 }
 

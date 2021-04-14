@@ -253,17 +253,10 @@ vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
 	
 	// @todo_llasek: implement tiering:
 	daos_size_t nvme_sz = 0;
-	daos_size_t tier_no = 0;
+	int tier_id = 0;
 
-	if (!path || uuid_is_null(uuid) || (blob_tiers_nr > 0 && blob_tier_sz == NULL))
+	if (!path || uuid_is_null(uuid) || (blob_tiers_nr > 0 && blob_tier_sz == NULL) || blob_tiers_nr > TIERS_MAX)
 		return -DER_INVAL;
-
-	for ( tier_no = 0; tier_no < blob_tiers_nr; tier_no++) {
-		nvme_sz += blob_tier_sz[tier_no];
-	}
-
-	D_DEBUG(DB_MGMT, "Pool Path: %s, size: "DF_U64":"DF_U64" ("DF_U64" tiers), "
-		"UUID: "DF_UUID"\n", path, scm_sz, nvme_sz, blob_tiers_nr, DP_UUID(uuid));
 
 	if (flags & VOS_POF_SMALL)
 		flags |= VOS_POF_EXCL;
@@ -340,7 +333,24 @@ vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
 
 	uuid_copy(pool_df->pd_id, uuid);
 	pool_df->pd_scm_sz	= scm_sz;
-	pool_df->pd_nvme_sz	= nvme_sz;
+
+	if (blob_tiers_nr > 0) {
+		if (xs_ctxt && blob_tiers_nr > bio_xsctx_tiers(xs_ctxt)) {
+			D_ERROR("The tier specified ("DF_U64") does not exist\n", blob_tiers_nr-1);
+			rc = -DER_INVAL;
+			goto end;
+		}
+
+		pool_df->pd_nvme_tier0_sz = blob_tier_sz[0];
+		nvme_sz += blob_tier_sz[0];
+		for (tier_id = 1; tier_id < blob_tiers_nr; tier_id++) {
+			nvme_sz += blob_tier_sz[tier_id];
+			pool_df->pd_nvme_tier_sz[tier_id-1] = blob_tier_sz[tier_id];
+		}
+	}
+	D_DEBUG(DB_MGMT, "Pool Path: %s, total size: "DF_U64":"DF_U64" ("DF_U64" tiers), "
+		"UUID: "DF_UUID"\n", path, scm_sz, nvme_sz, blob_tiers_nr, DP_UUID(uuid));
+
 	pool_df->pd_magic	= POOL_DF_MAGIC;
 	if (DAOS_FAIL_CHECK(FLC_POOL_DF_VER))
 		pool_df->pd_version = 0;
@@ -368,31 +378,59 @@ end:
 	if (nvme_sz == 0 || xs_ctxt == NULL)
 		goto open;
 
-	/* Create SPDK blob on NVMe device */
-	D_DEBUG(DB_MGMT, "Creating blob for xs:%p pool:"DF_UUID"\n",
-		xs_ctxt, DP_UUID(uuid));
-	rc = bio_blob_create(uuid, xs_ctxt, nvme_sz);
-	if (rc != 0) {
-		D_ERROR("Error creating blob for xs:%p pool:"DF_UUID" "
-			""DF_RC"\n", xs_ctxt, DP_UUID(uuid), DP_RC(rc));
-		goto close;
+
+	for (tier_id = 0; tier_id < blob_tiers_nr; tier_id++) {
+		if (tier_id == 0) {
+			nvme_sz = pool_df->pd_nvme_tier0_sz;
+		}
+		else
+		{
+			nvme_sz = pool_df->pd_nvme_tier_sz[tier_id-1];
+		}
+
+		/* Create SPDK blob on NVMe device */
+		D_DEBUG(DB_MGMT, "Creating tier %d blob of sz "DF_U64" for xs:%p pool:"DF_UUID"\n",
+			tier_id, nvme_sz, xs_ctxt, DP_UUID(uuid));
+		rc = bio_blob_create(uuid, xs_ctxt, tier_id, nvme_sz);
+		if (rc != 0) {
+			D_ERROR("Error creating blob for tier %d xs:%p pool:"DF_UUID" "
+				""DF_RC"\n", tier_id, xs_ctxt, DP_UUID(uuid), DP_RC(rc));
+			goto close;
+		}
 	}
 
-	/* Format SPDK blob header */
-	blob_hdr.bbh_blk_sz = VOS_BLK_SZ;
-	blob_hdr.bbh_hdr_sz = VOS_BLOB_HDR_BLKS;
-	uuid_copy(blob_hdr.bbh_pool, uuid);
+	for (tier_id = 0; tier_id < blob_tiers_nr; tier_id++) {
+		struct vea_space_df *pd_vea_df;
 
-	/* Format SPDK blob*/
-	rc = vea_format(&umem, vos_txd_get(), &pool_df->pd_vea_df, VOS_BLK_SZ,
-			VOS_BLOB_HDR_BLKS, nvme_sz, vos_blob_format_cb,
-			&blob_hdr, false);
-	if (rc) {
-		D_ERROR("Format blob error for xs:%p pool:"DF_UUID" "DF_RC"\n",
-			xs_ctxt, DP_UUID(uuid), DP_RC(rc));
-		/* Destroy the SPDK blob on error */
-		rc = bio_blob_delete(uuid, xs_ctxt);
-		goto close;
+		if (tier_id == 0) {
+			nvme_sz = pool_df->pd_nvme_tier0_sz;
+			pd_vea_df = &pool_df->pd_vea_tier0_df;
+		}
+		else
+		{
+			nvme_sz = pool_df->pd_nvme_tier_sz[tier_id-1];
+			pd_vea_df = &pool_df->pd_vea_tier_df[tier_id-1];
+		}
+
+		/* Format SPDK blob header */
+		blob_hdr.bbh_blk_sz = VOS_BLK_SZ;
+		blob_hdr.bbh_hdr_sz = VOS_BLOB_HDR_BLKS;
+		blob_hdr.bbh_tier_id = tier_id;
+		uuid_copy(blob_hdr.bbh_pool, uuid);
+
+		/* Format SPDK blob*/
+		rc = vea_format(&umem, vos_txd_get(), pd_vea_df, VOS_BLK_SZ,
+				VOS_BLOB_HDR_BLKS, nvme_sz, vos_blob_format_cb,
+				&blob_hdr, false);
+		if (rc) {
+			D_ERROR("Format blob error for tier %d xs:%p pool:"DF_UUID" "DF_RC"\n",
+				tier_id, xs_ctxt, DP_UUID(uuid), DP_RC(rc));
+			for ( ; tier_id >= 0; tier_id--) {
+				/* Destroy the SPDK blob on error */
+				bio_blob_delete(uuid, xs_ctxt, tier_id);
+			};
+			goto close;
+		}
 	}
 
 open:
@@ -463,7 +501,7 @@ vos_pool_kill(uuid_t uuid, bool force)
 	if (xs_ctxt) {
 		D_DEBUG(DB_MGMT, "Deleting blob for xs:%p pool:"DF_UUID"\n",
 			xs_ctxt, DP_UUID(uuid));
-		rc = bio_blob_delete(uuid, xs_ctxt);
+		rc = bio_blob_delete(uuid, xs_ctxt, 0);	// @todo_llasek: tiering
 		if (rc) {
 			D_ERROR("Destroy blob for pool="DF_UUID" rc=%s\n",
 				DP_UUID(uuid), d_errstr(rc));
@@ -667,7 +705,7 @@ pool_open(PMEMobjpool *ph, struct vos_pool_df *pool_df, uuid_t uuid,
 		D_GOTO(failed, rc);
 	}
 
-	xs_ctxt = pool_df->pd_nvme_sz == 0 ? NULL : vos_xsctxt_get();
+	xs_ctxt = pool_df->pd_nvme_tier0_sz == 0 ? NULL : vos_xsctxt_get();
 
 	D_DEBUG(DB_MGMT, "Opening VOS I/O context for xs:%p pool:"DF_UUID"\n",
 		xs_ctxt, DP_UUID(uuid));
@@ -685,7 +723,7 @@ pool_open(PMEMobjpool *ph, struct vos_pool_df *pool_df, uuid_t uuid,
 		/* set unmap callback fp */
 		unmap_ctxt.vnc_unmap = vos_blob_unmap_cb;
 		unmap_ctxt.vnc_data = pool->vp_io_ctxt;
-		rc = vea_load(&pool->vp_umm, vos_txd_get(), &pool_df->pd_vea_df,
+		rc = vea_load(&pool->vp_umm, vos_txd_get(), &pool_df->pd_vea_tier0_df,	// @todo_llasek: tiering
 			      &unmap_ctxt, &pool->vp_vea_info);
 		if (rc) {
 			D_ERROR("Failed to load block space info: "DF_RC"\n",
@@ -771,6 +809,11 @@ vos_pool_open(const char *path, uuid_t uuid, unsigned int flags,
 		goto out;
 	}
 
+	/**
+	 * The object returned will be resized to the current POOL_DF_VERSION - as per libpmemobj:
+	 * If the requested size is larger than the current size, the root object is automatically resized.
+	 * In such case, the old data is preserved and the extra space is zeroed.
+	 */
 	pool_df = vos_pool_pop2df(ph);
 	if (pool_df->pd_magic != POOL_DF_MAGIC) {
 		D_CRIT("Unknown DF magic %x\n", pool_df->pd_magic);

@@ -39,6 +39,16 @@ struct smd_pool_info {
 	uint64_t	*spi_blobs;
 };
 
+#define TARGET_ID_MASK	(0x00ffffff)
+#define TIER_ID_MASK	(0xff)
+#define TIER_ID_SHIFT	(24)
+
+static inline uint32_t
+make_smd_target_id(uint32_t tgt_id, uint32_t tier_id)
+{
+	return tgt_id | (tier_id << TIER_ID_SHIFT);
+}
+
 /**
  * Initialize SMD store, create store if it's not existing
  *
@@ -144,7 +154,7 @@ int smd_dev_replace(uuid_t old_id, uuid_t new_id, d_list_t *pool_list);
  *
  * \return			Zero on success, negative value on error
  */
-int smd_pool_add_tgt(uuid_t pool_id, uint32_t tgt_id, uint64_t blob_id,
+int smd_pool_add_tgt(uuid_t pool_id, uint32_t tgt_id, uint32_t tier_id, uint64_t blob_id,
 		     uint64_t blob_sz);
 
 /**
@@ -176,7 +186,7 @@ int smd_pool_get_info(uuid_t pool_id, struct smd_pool_info **pool_info);
  *
  * \return			Zero on success, negative value on error
  */
-int smd_pool_get_blob(uuid_t pool_id, uint32_t tgt_id, uint64_t *blob_id);
+int smd_pool_get_blob(uuid_t pool_id, uint32_t tgt_id, uint32_t tier_id, uint64_t *blob_id);
 
 /**
  * Get pool info, caller is responsible to free list items

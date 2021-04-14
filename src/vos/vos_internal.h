@@ -161,7 +161,7 @@ struct vos_pool {
 	/** In-memory free space tracking for NVMe device */
 	struct vea_space_info	*vp_vea_info;
 	/** Reserved sys space (for space reclaim, rebuild, etc.) in bytes */
-	daos_size_t		vp_space_sys[DAOS_MEDIA_MAX];
+	daos_size_t		vp_space_sys[DAOS_MEDIA_MAX];	// @todo_llasek: tiering
 	/** Held space by inflight updates. In bytes */
 	daos_size_t		vp_space_held[DAOS_MEDIA_MAX];
 	/** Dedup hash */

@@ -25,6 +25,7 @@ typedef struct {
 	uint64_t	ba_off;
 	/* DAOS_MEDIA_SCM or DAOS_MEDIA_NVME */
 	uint16_t	ba_type;
+	uint16_t	ba_nvme_tier_id;	// @todo_llasek: tiering POC, may use ba_type
 	/* Is the address a hole ? */
 	uint16_t	ba_hole;
 	uint16_t	ba_dedup;
@@ -79,6 +80,7 @@ struct bio_blob_hdr {
 	uint64_t	bbh_blob_id;
 	uuid_t		bbh_blobstore;
 	uuid_t		bbh_pool;
+	int		bbh_tier_id;
 };
 
 enum bio_bs_state {
@@ -99,6 +101,13 @@ bio_addr_set(bio_addr_t *addr, uint16_t type, uint64_t off)
 {
 	addr->ba_type = type;
 	addr->ba_off = umem_off2offset(off);
+}
+
+static inline void
+bio_nvme_tier_set(bio_addr_t *addr, int tier_id)
+{
+	D_ASSERT((tier_id >> 16) == 0);
+	addr->ba_nvme_tier_id = (uint16_t)tier_id;
 }
 
 static inline bool
@@ -176,6 +185,12 @@ static inline void *
 bio_iov2raw_buf(const struct bio_iov *biov)
 {
 	return biov->bi_buf;
+}
+
+static inline int
+bio_iov2tier(const struct bio_iov *biov)
+{
+	return biov->bi_addr.ba_nvme_tier_id;
 }
 
 static inline void
@@ -405,7 +420,7 @@ int bio_nvme_ctl(unsigned int cmd, void *arg);
  *
  * \returns		Zero on success, negative value on error
  */
-int bio_xsctxt_alloc(struct bio_xs_context **pctxt, int tgt_id);
+int bio_xsctxt_alloc(struct bio_xs_context **pctxt, int tgt_id, int tiers_nr);
 
 /*
  * Finalize per-xstream NVMe context and SPDK env.
@@ -415,6 +430,8 @@ int bio_xsctxt_alloc(struct bio_xs_context **pctxt, int tgt_id);
  * \returns		N/A
  */
 void bio_xsctxt_free(struct bio_xs_context *ctxt);
+
+int bio_xsctx_tiers(struct bio_xs_context *ctxt);
 
 /**
  * NVMe poller to poll NVMe I/O completions.
@@ -437,7 +454,7 @@ int bio_nvme_poll(struct bio_xs_context *ctxt);
  * \returns		Zero on success, negative value on error
  */
 int bio_blob_create(uuid_t uuid, struct bio_xs_context *xs_ctxt,
-		    uint64_t blob_sz);
+		    int tier_id, uint64_t blob_sz);
 
 /*
  * Delete per VOS instance blob.
@@ -447,7 +464,7 @@ int bio_blob_create(uuid_t uuid, struct bio_xs_context *xs_ctxt,
  *
  * \returns		Zero on success, negative value on error
  */
-int bio_blob_delete(uuid_t uuid, struct bio_xs_context *xs_ctxt);
+int bio_blob_delete(uuid_t uuid, struct bio_xs_context *xs_ctxt, int tier_id);
 
 /*
  * Open per VOS instance I/O context.

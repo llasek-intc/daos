@@ -221,24 +221,37 @@ struct bio_blobstore {
 				 bb_unloading:1;
 };
 
+/* Per-tier context */
+struct bio_tier {
+	int bt_id;
+	struct bio_blobstore	*bt_blobstore;
+	struct spdk_io_channel	*bt_io_channel;
+	d_list_t		 bt_io_ctxts;
+};
+
+#define TIERS_MAX			4	// @todo_llasek: POC, common def or DAOS_MEDIA_MAX?
+
 /* Per-xstream NVMe context */
 struct bio_xs_context {
 	int			 bxc_tgt_id;
 	unsigned int		 bxc_blob_rw;	/* inflight blob read/write */
 	struct spdk_thread	*bxc_thread;
-	struct bio_blobstore	*bxc_blobstore;
-	struct spdk_io_channel	*bxc_io_channel;
 	struct bio_dma_buffer	*bxc_dma_buf;
-	d_list_t		 bxc_io_ctxts;
+	int	bxc_tiers_nr;
+	struct bio_tier	 bxc_tier[TIERS_MAX];
+};
+
+struct bio_io_tier {
+	struct spdk_blob	*bit_blob;
+	d_list_t		 bit_link; /* link to bt_io_ctxts */
 };
 
 /* Per VOS instance I/O context */
 struct bio_io_context {
-	d_list_t		 bic_link; /* link to bxc_io_ctxts */
 	struct umem_instance	*bic_umem;
 	uint64_t		 bic_pmempool_uuid;
-	struct spdk_blob	*bic_blob;
 	struct bio_xs_context	*bic_xs_ctxt;
+	struct bio_io_tier	 bic_tier[TIERS_MAX];
 	uint32_t		 bic_inflight_dmas;
 	uint32_t		 bic_io_unit;
 	uuid_t			 bic_pool_id;
@@ -256,6 +269,7 @@ struct bio_rsrvd_region {
 	uint64_t		 brr_off;
 	/* End (not included) in bytes */
 	uint64_t		 brr_end;
+	int			 brr_tier_id;
 };
 
 /* Reserved DMA buffer for certain io descriptor */
@@ -302,9 +316,9 @@ owner_thread(struct bio_blobstore *bbs)
 }
 
 static inline bool
-is_blob_valid(struct bio_io_context *ctxt)
+is_blob_valid(struct bio_io_context *ctxt, int tier_id)
 {
-	return ctxt->bic_blob != NULL && !ctxt->bic_closing;
+	return ctxt->bic_tier[tier_id].bit_blob != NULL && !ctxt->bic_closing;
 }
 
 static inline uint64_t
@@ -390,8 +404,8 @@ void bio_bs_monitor(struct bio_xs_context *ctxt, uint64_t now);
 void bio_media_error(void *msg_arg);
 
 /* bio_context.c */
-int bio_blob_close(struct bio_io_context *ctxt, bool async);
-int bio_blob_open(struct bio_io_context *ctxt, bool async);
+int bio_blob_close(struct bio_io_context *ctxt, int tier_id, bool async);
+int bio_blob_open(struct bio_io_context *ctxt, int tier_id, bool async);
 
 /* bio_recovery.c */
 int bio_bs_state_transit(struct bio_blobstore *bbs);

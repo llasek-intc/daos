@@ -89,8 +89,11 @@ enum vos_gc_type {
 
 /** Lowest supported durable format version */
 #define POOL_DF_VER_1				15
+#define POOL_DF_VER_2				16
 /** Current durable format version */
-#define POOL_DF_VERSION				POOL_DF_VER_1
+#define POOL_DF_VERSION				POOL_DF_VER_2
+
+#define TIERS_MAX			4	// @todo_llasek: POC, common def or DAOS_MEDIA_MAX?
 
 /**
  * Durable format for VOS pool
@@ -116,15 +119,17 @@ struct vos_pool_df {
 	/** Total space in bytes on SCM */
 	uint64_t				pd_scm_sz;
 	/** Total space in bytes on NVMe */
-	uint64_t				pd_nvme_sz;
+	uint64_t				pd_nvme_tier0_sz;		// @todo_llasek: this is tier 0
 	/** # of containers in this pool */
 	uint64_t				pd_cont_nr;
 	/** Typed PMEMoid pointer for the container index table */
 	struct btr_root				pd_cont_root;
 	/** Free space tracking for NVMe device */
-	struct vea_space_df			pd_vea_df;
+	struct vea_space_df			pd_vea_tier0_df;	// @todo_llasek: this is tier 0
 	/** GC bins for container/object/dkey... */
 	struct vos_gc_bin_df			pd_gc_bins[GC_MAX];
+	uint64_t				pd_nvme_tier_sz[TIERS_MAX];	// @todo_llasek: this is tier 1+
+	struct vea_space_df		pd_vea_tier_df[TIERS_MAX];	// @todo_llasek: this is tier 1+
 };
 
 /**

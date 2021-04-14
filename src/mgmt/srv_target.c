@@ -614,10 +614,10 @@ tgt_vos_create(struct ds_pooltgts_rec *ptrec, uuid_t uuid,
 
 	if (!rc) {
 		struct vos_pool_arg	vpa;
-		daos_size_t nvme_tier_nr = 0;
+		daos_size_t nvme_tier_nr;
 		daos_size_t     *nvme_tier_size;
 
-		D_ALLOC_CORE(nvme_tier_size, sizeof(daos_size_t), tgt_nvme_tiers_nr);	// @todo_llasek: probably can skip the alloc
+		D_ALLOC_ARRAY(nvme_tier_size, tgt_nvme_tiers_nr);
 		if (nvme_tier_size == NULL) {
 			D_ERROR(DF_UUID": failed to allocate nvme_tier_size array\n", DP_UUID(uuid));
 			return -DER_NOMEM;

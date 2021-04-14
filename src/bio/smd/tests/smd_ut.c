@@ -341,17 +341,17 @@ ut_pool(void **state)
 	uuid_generate(id3);
 
 	for (i = 0; i < 4; i++) {
-		rc = smd_pool_add_tgt(id1, i, i << 10, 100);
+		rc = smd_pool_add_tgt(id1, i, 0, i << 10, 100);	// @todo_llasek: tier id
 		assert_rc_equal(rc, 0);
 
-		rc = smd_pool_add_tgt(id2, i, i << 20, 200);
+		rc = smd_pool_add_tgt(id2, i, 0, i << 20, 200);	// @todo_llasek: tier id
 		assert_rc_equal(rc, 0);
 	}
 
-	rc = smd_pool_add_tgt(id1, 0, 5000, 100);
+	rc = smd_pool_add_tgt(id1, 0, 0, 5000, 100);	// @todo_llasek: tier id
 	assert_rc_equal(rc, -DER_EXIST);
 
-	rc = smd_pool_add_tgt(id1, 4, 4 << 10, 200);
+	rc = smd_pool_add_tgt(id1, 4, 0, 4 << 10, 200);	// @todo_llasek: tier id
 	assert_rc_equal(rc, -DER_INVAL);
 
 	rc = smd_pool_get_info(id1, &pool_info);
@@ -364,16 +364,16 @@ ut_pool(void **state)
 	assert_rc_equal(rc, -DER_NONEXIST);
 
 	for (i = 0; i < 4; i++) {
-		rc = smd_pool_get_blob(id1, i, &blob_id);
+		rc = smd_pool_get_blob(id1, i, 0, &blob_id);	// @todo_llasek: tier id
 		assert_rc_equal(rc, 0);
 		assert_int_equal(blob_id, i << 10);
 
-		rc = smd_pool_get_blob(id2, i, &blob_id);
+		rc = smd_pool_get_blob(id2, i, 0, &blob_id);	// @todo_llasek: tier id
 		assert_rc_equal(rc, 0);
 		assert_int_equal(blob_id, i << 20);
 	}
 
-	rc = smd_pool_get_blob(id1, 5, &blob_id);
+	rc = smd_pool_get_blob(id1, 5, 0, &blob_id);	// @todo_llasek: tier id
 	assert_rc_equal(rc, -DER_NONEXIST);
 
 	D_INIT_LIST_HEAD(&pool_list);
@@ -424,10 +424,10 @@ ut_dev_replace(void **state)
 
 	/* Assign pools, they were unassigned in prior pool test */
 	for (i = 0; i < 4; i++) {
-		rc = smd_pool_add_tgt(pool_id1, i, i << 10, 100);
+		rc = smd_pool_add_tgt(pool_id1, i, 0, i << 10, 100);	// @todo_llasek: tier id
 		assert_rc_equal(rc, 0);
 
-		rc = smd_pool_add_tgt(pool_id2, i, i << 20, 200);
+		rc = smd_pool_add_tgt(pool_id2, i, 0, i << 20, 200);	// @todo_llasek: tier id
 		assert_rc_equal(rc, 0);
 	}
 
@@ -479,7 +479,7 @@ ut_dev_replace(void **state)
 	/* Verify blob IDs after device replace */
 	d_list_for_each_entry_safe(pool_info, tmp_pool, &pool_list, spi_link) {
 		for (i = 0; i < 3; i++) {
-			rc = smd_pool_get_blob(pool_info->spi_id, i, &blob_id);
+			rc = smd_pool_get_blob(pool_info->spi_id, i, 0, &blob_id);	// @todo_llasek: tier id
 			assert_rc_equal(rc, 0);
 			if (i == 0)
 				assert_int_equal(blob_id, 555);

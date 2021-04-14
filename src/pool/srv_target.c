@@ -951,7 +951,7 @@ pool_tgt_query(struct ds_pool *pool, struct daos_pool_space *ps)
 
 	/* collective operations */
 	coll_ops.co_func		= pool_query_one;
-	coll_ops.co_reduce		= pool_query_xs_reduce;
+	coll_ops.co_reduce		= pool_query_xs_reduce;	// @todo_llasek: tier info
 	coll_ops.co_reduce_arg_alloc	= pool_query_xs_arg_alloc;
 	coll_ops.co_reduce_arg_free	= pool_query_xs_arg_free;
 

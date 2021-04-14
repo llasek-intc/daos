@@ -418,7 +418,7 @@ iod_add_chunk(struct bio_desc *biod, struct bio_dma_chunk *chk)
 }
 
 static int
-iod_add_region(struct bio_desc *biod, struct bio_dma_chunk *chk,
+iod_add_region(struct bio_desc *biod, int tier_id, struct bio_dma_chunk *chk,
 	       unsigned int chk_pg_idx, uint64_t off, uint64_t end)
 {
 	struct bio_rsrvd_dma *rsrvd_dma = &biod->bd_rsrvd;
@@ -449,6 +449,7 @@ iod_add_region(struct bio_desc *biod, struct bio_dma_chunk *chk,
 	rsrvd_dma->brd_regions[cnt].brr_pg_idx = chk_pg_idx;
 	rsrvd_dma->brd_regions[cnt].brr_off = off;
 	rsrvd_dma->brd_regions[cnt].brr_end = end;
+	rsrvd_dma->brd_regions[cnt].brr_tier_id = tier_id;
 	rsrvd_dma->brd_rg_cnt++;
 	return 0;
 }
@@ -510,8 +511,8 @@ dma_map_one(struct bio_desc *biod, struct bio_iov *biov,
 		bio_iov_set_raw_buf(biov, chk->bdc_ptr + pg_off);
 		chk_pg_idx = 0;
 
-		D_DEBUG(DB_IO, "Huge chunk:%p[%p], cnt:%u, off:%u\n",
-			chk, chk->bdc_ptr, pg_cnt, pg_off);
+		D_DEBUG(DB_IO, "Huge chunk:%p[%p], cnt:%u, off:%u, tier %d\n",
+			chk, chk->bdc_ptr, pg_cnt, pg_off, bio_iov2tier(biov));
 
 		goto add_region;
 	}
@@ -522,9 +523,9 @@ dma_map_one(struct bio_desc *biod, struct bio_iov *biov,
 	if (last_rg) {
 		uint64_t cur_pg, prev_pg_start, prev_pg_end;
 
-		D_DEBUG(DB_TRACE, "Last region %p:%d ["DF_U64","DF_U64")\n",
+		D_DEBUG(DB_TRACE, "Last region %p:%d ["DF_U64","DF_U64") tier %d\n",
 			last_rg->brr_chk, last_rg->brr_pg_idx,
-			last_rg->brr_off, last_rg->brr_end);
+			last_rg->brr_off, last_rg->brr_end, last_rg->brr_tier_id);
 
 		chk = last_rg->brr_chk;
 		D_ASSERT(biod->bd_chk_type == chk->bdc_type);
@@ -536,14 +537,15 @@ dma_map_one(struct bio_desc *biod, struct bio_iov *biov,
 		cur_pg = off >> BIO_DMA_PAGE_SHIFT;
 		D_ASSERT(prev_pg_start <= prev_pg_end);
 
-		/* Consecutive in page */
-		if (cur_pg == prev_pg_end) {
+		/* Consecutive in tier and page */
+		if (bio_iov2tier(biov) == last_rg->brr_tier_id &&
+			cur_pg == prev_pg_end) {
 			chk_pg_idx += (prev_pg_end - prev_pg_start);
 			bio_iov_set_raw_buf(biov,
 				chunk_reserve(chk, chk_pg_idx, pg_cnt, pg_off));
 			if (bio_iov2raw_buf(biov) != NULL) {
-				D_DEBUG(DB_TRACE, "Consecutive reserve %p.\n",
-					bio_iov2raw_buf(biov));
+				D_DEBUG(DB_TRACE, "Consecutive reserve %p, tier %d.\n",
+					bio_iov2raw_buf(biov), last_rg->brr_tier_id);
 				last_rg->brr_end = end;
 				return 0;
 			}
@@ -557,8 +559,8 @@ dma_map_one(struct bio_desc *biod, struct bio_iov *biov,
 		bio_iov_set_raw_buf(biov, chunk_reserve(chk, chk_pg_idx,
 							pg_cnt, pg_off));
 		if (bio_iov2raw_buf(biov) != NULL) {
-			D_DEBUG(DB_IO, "Last chunk reserve %p.\n",
-				bio_iov2raw_buf(biov));
+			D_DEBUG(DB_IO, "Last chunk reserve %p, tier %d.\n",
+				bio_iov2raw_buf(biov), bio_iov2tier(biov));
 			goto add_region;
 		}
 	}
@@ -575,8 +577,8 @@ dma_map_one(struct bio_desc *biod, struct bio_iov *biov,
 		bio_iov_set_raw_buf(biov, chunk_reserve(chk, chk_pg_idx,
 							pg_cnt, pg_off));
 		if (bio_iov2raw_buf(biov) != NULL) {
-			D_DEBUG(DB_IO, "Current chunk reserve %p.\n",
-				bio_iov2raw_buf(biov));
+			D_DEBUG(DB_IO, "Current chunk reserve %p, tier %d.\n",
+				bio_iov2raw_buf(biov), bio_iov2tier(biov));
 			goto add_chunk;
 		}
 	}
@@ -598,8 +600,8 @@ dma_map_one(struct bio_desc *biod, struct bio_iov *biov,
 	bio_iov_set_raw_buf(biov,
 			    chunk_reserve(chk, chk_pg_idx, pg_cnt, pg_off));
 	if (bio_iov2raw_buf(biov) != NULL) {
-		D_DEBUG(DB_IO, "New chunk reserve %p.\n",
-			bio_iov2raw_buf(biov));
+		D_DEBUG(DB_IO, "New chunk reserve %p, tier %d.\n",
+			bio_iov2raw_buf(biov), bio_iov2tier(biov));
 		goto add_chunk;
 	}
 
@@ -614,7 +616,7 @@ add_chunk:
 		return rc;
 	}
 add_region:
-	return iod_add_region(biod, chk, chk_pg_idx, off, end);
+	return iod_add_region(biod, bio_iov2tier(biov), chk, chk_pg_idx, off, end);
 }
 
 static void
@@ -648,7 +650,7 @@ rw_completion(void *cb_arg, int err)
 		if (mem == NULL)
 			goto skip_media_error;
 		mem->mem_err_type = biod->bd_update ? MET_WRITE : MET_READ;
-		mem->mem_bs = xs_ctxt->bxc_blobstore;
+		mem->mem_bs = xs_ctxt->bxc_tier[0].bt_blobstore;	// @todo_llasek: tiering
 		mem->mem_tgt_id = xs_ctxt->bxc_tgt_id;
 		spdk_thread_send_msg(owner_thread(mem->mem_bs), bio_media_error,
 				     mem);
@@ -675,8 +677,6 @@ dma_rw(struct bio_desc *biod, bool prep)
 
 	D_ASSERT(biod->bd_ctxt->bic_xs_ctxt);
 	xs_ctxt = biod->bd_ctxt->bic_xs_ctxt;
-	blob = biod->bd_ctxt->bic_blob;
-	channel = xs_ctxt->bxc_io_channel;
 
 	biod->bd_inflights = 0;
 	biod->bd_dma_issued = 0;
@@ -686,21 +686,24 @@ dma_rw(struct bio_desc *biod, bool prep)
 	if (daos_io_bypass & IOBP_NVME)
 		return;
 
-	if (!is_blob_valid(biod->bd_ctxt)) {
-		D_ERROR("Blobstore is invalid. blob:%p, closing:%d\n",
-			blob, biod->bd_ctxt->bic_closing);
-		biod->bd_result = -DER_NO_HDL;
-		return;
+	for (i = 0; i < xs_ctxt->bxc_tiers_nr; i++) {
+		if (!is_blob_valid(biod->bd_ctxt, i)) {
+			D_ERROR("Blobstore is invalid. blog:%p closing:%d\n",
+				biod->bd_ctxt->bic_tier[i].bit_blob, biod->bd_ctxt->bic_closing);
+			biod->bd_result = -DER_NO_HDL;
+			return;
+		}
 	}
 
-	D_ASSERT(channel != NULL);
 	biod->bd_ctxt->bic_inflight_dmas++;
-
-	D_DEBUG(DB_IO, "DMA start, blob:%p, update:%d, rmw:%d\n",
-		blob, biod->bd_update, rmw_read);
 
 	for (i = 0; i < rsrvd_dma->brd_rg_cnt; i++) {
 		rg = &rsrvd_dma->brd_regions[i];
+		blob = biod->bd_ctxt->bic_tier[rg->brr_tier_id].bit_blob;
+		channel = xs_ctxt->bxc_tier[rg->brr_tier_id].bt_io_channel;
+		D_ASSERT(channel != NULL);
+		D_DEBUG(DB_IO, "DMA start, blob:%p, update:%d, rmw:%d, tier %d\n",
+			blob, biod->bd_update, rmw_read, rg->brr_tier_id);
 
 		D_ASSERT(rg->brr_chk != NULL);
 		pg_idx = rg->brr_off >> BIO_DMA_PAGE_SHIFT;
@@ -720,9 +723,9 @@ dma_rw(struct bio_desc *biod, bool prep)
 				bio_yield();
 
 			D_DEBUG(DB_IO, "%s blob:%p payload:%p, "
-				"pg_idx:"DF_U64", pg_cnt:"DF_U64"\n",
+				"pg_idx:"DF_U64", pg_cnt:"DF_U64", tier %d\n",
 				biod->bd_update ? "Write" : "Read",
-				blob, payload, pg_idx, pg_cnt);
+				blob, payload, pg_idx, pg_cnt, rg->brr_tier_id);
 
 			if (biod->bd_update)
 				spdk_blob_io_write(blob, channel, payload,
@@ -745,8 +748,8 @@ dma_rw(struct bio_desc *biod, bool prep)
 
 		if (pg_off != 0 && payload != pg_rmw) {
 			D_DEBUG(DB_IO, "Front partial blob:%p payload:%p, "
-				"pg_idx:"DF_U64" pg_off:%d\n",
-				blob, payload, pg_idx, pg_off);
+				"pg_idx:"DF_U64" pg_off:%d, tier %d\n",
+				blob, payload, pg_idx, pg_off, rg->brr_tier_id);
 
 			memset(payload, 0, BIO_DMA_PAGE_SZ);
 			pg_rmw = payload;
@@ -759,8 +762,8 @@ dma_rw(struct bio_desc *biod, bool prep)
 
 		if (pg_off != 0 && payload != pg_rmw) {
 			D_DEBUG(DB_IO, "Rear partial blob:%p payload:%p, "
-				"pg_idx:"DF_U64" pg_off:%d\n",
-				blob, payload, pg_idx, pg_off);
+				"pg_idx:"DF_U64" pg_off:%d, tier %d\n",
+				blob, payload, pg_idx, pg_off, rg->brr_tier_id);
 
 			memset(payload, 0, BIO_DMA_PAGE_SZ);
 			pg_rmw = payload;
@@ -770,7 +773,7 @@ dma_rw(struct bio_desc *biod, bool prep)
 	if (xs_ctxt->bxc_tgt_id == -1) {
 		int	rc;
 
-		D_DEBUG(DB_IO, "Self poll completion, blob:%p\n", blob);
+		D_DEBUG(DB_IO, "Self poll completion\n");
 		rc = xs_poll_completion(xs_ctxt, &biod->bd_inflights, 0);
 		D_ASSERT(rc == 0);
 	} else {
@@ -780,8 +783,8 @@ dma_rw(struct bio_desc *biod, bool prep)
 	}
 
 	biod->bd_ctxt->bic_inflight_dmas--;
-	D_DEBUG(DB_IO, "DMA done, blob:%p, update:%d, rmw:%d\n",
-		blob, biod->bd_update, rmw_read);
+	D_DEBUG(DB_IO, "DMA done, update:%d, rmw:%d\n",
+		biod->bd_update, rmw_read);
 }
 
 void
@@ -1066,7 +1069,7 @@ bio_rwv(struct bio_io_context *ioctxt, struct bio_sglist *bsgl_in,
 	for (i = 0; i < bsgl->bs_nr; i++) {
 		D_ASSERT(bio_iov2buf(&bsgl_in->bs_iovs[i]) == NULL);
 		D_ASSERT(bio_iov2len(&bsgl_in->bs_iovs[i]) != 0);
-		bsgl->bs_iovs[i] = bsgl_in->bs_iovs[i];
+		bsgl->bs_iovs[i] = bsgl_in->bs_iovs[i];	// @todo_llasek: tiering
 	}
 	bsgl->bs_nr_out = bsgl->bs_nr;
 
@@ -1099,11 +1102,11 @@ bio_readv(struct bio_io_context *ioctxt, struct bio_sglist *bsgl,
 
 	rc = bio_rwv(ioctxt, bsgl, sgl, false);
 	if (rc)
-		D_ERROR("Readv to blob:%p failed for xs:%p, rc:%d\n",
-			ioctxt->bic_blob, ioctxt->bic_xs_ctxt, rc);
+		D_ERROR("Readv failed for xs:%p, rc:%d\n",
+			ioctxt->bic_xs_ctxt, rc);
 	else
-		D_DEBUG(DB_IO, "Readv to blob %p for xs:%p successfully\n",
-			ioctxt->bic_blob, ioctxt->bic_xs_ctxt);
+		D_DEBUG(DB_IO, "Readv for xs:%p successfully\n",
+			ioctxt->bic_xs_ctxt);
 
 	return rc;
 }
@@ -1116,11 +1119,11 @@ bio_writev(struct bio_io_context *ioctxt, struct bio_sglist *bsgl,
 
 	rc = bio_rwv(ioctxt, bsgl, sgl, true);
 	if (rc)
-		D_ERROR("Writev to blob:%p failed for xs:%p, rc:%d\n",
-			ioctxt->bic_blob, ioctxt->bic_xs_ctxt, rc);
+		D_ERROR("Writev failed for xs:%p, rc:%d\n",
+			ioctxt->bic_xs_ctxt, rc);
 	else
-		D_DEBUG(DB_IO, "Writev to blob %p for xs:%p successfully\n",
-			ioctxt->bic_blob, ioctxt->bic_xs_ctxt);
+		D_DEBUG(DB_IO, "Writev for xs:%p successfully\n",
+			ioctxt->bic_xs_ctxt);
 
 	return rc;
 }
@@ -1144,13 +1147,13 @@ bio_rw(struct bio_io_context *ioctxt, bio_addr_t addr, d_iov_t *iov,
 
 	rc = bio_rwv(ioctxt, &bsgl, &sgl, update);
 	if (rc)
-		D_ERROR("%s to blob:%p failed for xs:%p, rc:%d\n",
-			update ? "Write" : "Read", ioctxt->bic_blob,
-			ioctxt->bic_xs_ctxt, rc);
+		D_ERROR("%s failed for xs:%p, tier %u, rc:%d\n",
+			update ? "Write" : "Read",
+			ioctxt->bic_xs_ctxt, addr.ba_nvme_tier_id, rc);
 	else
-		D_DEBUG(DB_IO, "%s to blob %p for xs:%p successfully\n",
-			update ? "Write" : "Read", ioctxt->bic_blob,
-			ioctxt->bic_xs_ctxt);
+		D_DEBUG(DB_IO, "%s for xs:%p, tier %u successfully\n",
+			update ? "Write" : "Read",
+			ioctxt->bic_xs_ctxt, addr.ba_nvme_tier_id);
 
 	return rc;
 }

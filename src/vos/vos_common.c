@@ -510,7 +510,7 @@ vos_self_nvme_init()
 		return rc;
 
 	self_mode.self_nvme_init = true;
-	rc = bio_xsctxt_alloc(&self_mode.self_xs_ctxt, -1 /* Self poll */);
+	rc = bio_xsctxt_alloc(&self_mode.self_xs_ctxt, -1 /* Self poll */, 1);	// @todo_llasek: tiering
 	return rc;
 }
 

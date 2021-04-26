@@ -229,8 +229,6 @@ struct bio_tier {
 	d_list_t		 bt_io_ctxts;
 };
 
-#define TIERS_MAX			4	// @todo_llasek: POC, common def or DAOS_MEDIA_MAX?
-
 /* Per-xstream NVMe context */
 struct bio_xs_context {
 	int			 bxc_tgt_id;
@@ -238,7 +236,7 @@ struct bio_xs_context {
 	struct spdk_thread	*bxc_thread;
 	struct bio_dma_buffer	*bxc_dma_buf;
 	int	bxc_tiers_nr;
-	struct bio_tier	 bxc_tier[TIERS_MAX];
+	struct bio_tier	 bxc_tier[DAOS_MEDIA_MAX_NVME];
 };
 
 struct bio_io_tier {
@@ -251,7 +249,7 @@ struct bio_io_context {
 	struct umem_instance	*bic_umem;
 	uint64_t		 bic_pmempool_uuid;
 	struct bio_xs_context	*bic_xs_ctxt;
-	struct bio_io_tier	 bic_tier[TIERS_MAX];
+	struct bio_io_tier	 bic_tier[DAOS_MEDIA_MAX_NVME];
 	uint32_t		 bic_inflight_dmas;
 	uint32_t		 bic_io_unit;
 	uuid_t			 bic_pool_id;

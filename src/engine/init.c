@@ -864,14 +864,13 @@ parse(int argc, char **argv)
 			dss_nvme_conf = optarg;
 			break;
 		case 'T':
-#define TIERS_MAX			4	// @todo_llasek: POC, common def or DAOS_MEDIA_MAX?
 			dss_nvme_tiers = atoi(optarg);
 			if (dss_nvme_tiers <= 0) {
 				printf("Needs at least 1 tier\n");
 				rc = -DER_INVAL;
 				break;
-			} else if (dss_nvme_tiers > TIERS_MAX) {
-				printf("%d tiers at most\n", TIERS_MAX);
+			} else if (dss_nvme_tiers > DAOS_MEDIA_MAX_NVME) {
+				printf("%d tiers at most\n", DAOS_MEDIA_MAX_NVME);
 				rc = -DER_INVAL;
 				break;
 			}

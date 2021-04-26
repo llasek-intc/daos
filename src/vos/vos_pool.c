@@ -240,7 +240,8 @@ static int pool_open(PMEMobjpool *ph, struct vos_pool_df *pool_df, uuid_t uuid,
 
 int
 vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
-		daos_size_t blob_tiers_nr, daos_size_t *blob_tier_sz, unsigned int flags, daos_handle_t *poh)
+		daos_size_t blob_tiers_nr, daos_size_t *blob_tier_sz,
+		unsigned int flags, daos_handle_t *poh)
 {
 	PMEMobjpool		*ph;
 	struct umem_attr	 uma = {0};
@@ -253,11 +254,12 @@ vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
 	struct vos_pool		*pool = NULL;
 	int			 rc = 0, enabled = 1;
 	
-	// @todo_llasek: implement tiering:
 	daos_size_t nvme_sz = 0;
 	int tier_id = 0;
 
-	if (!path || uuid_is_null(uuid) || (blob_tiers_nr > 0 && blob_tier_sz == NULL) || blob_tiers_nr > TIERS_MAX)
+	if (!path || uuid_is_null(uuid) ||
+		(blob_tiers_nr > 0 && blob_tier_sz == NULL) ||
+		blob_tiers_nr > DAOS_MEDIA_MAX_NVME)
 		return -DER_INVAL;
 
 	if (flags & VOS_POF_SMALL)
@@ -338,7 +340,8 @@ vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
 
 	if (blob_tiers_nr > 0) {
 		if (xs_ctxt && blob_tiers_nr > bio_xsctx_tiers(xs_ctxt)) {
-			D_ERROR("The tier specified ("DF_U64") does not exist\n", blob_tiers_nr-1);
+			D_ERROR("The tier specified ("DF_U64") does not exist\n",
+				blob_tiers_nr-1);
 			rc = -DER_INVAL;
 			goto end;
 		}
@@ -350,8 +353,9 @@ vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
 			pool_df->pd_nvme_tier_sz[tier_id-1] = blob_tier_sz[tier_id];
 		}
 	}
-	D_DEBUG(DB_MGMT, "Pool Path: %s, total size: "DF_U64":"DF_U64" ("DF_U64" tiers), "
-		"UUID: "DF_UUID"\n", path, scm_sz, nvme_sz, blob_tiers_nr, DP_UUID(uuid));
+	D_DEBUG(DB_MGMT, "Pool Path: %s, total size: "DF_U64":"DF_U64" "
+		"("DF_U64" tiers), UUID: "DF_UUID"\n",
+		path, scm_sz, nvme_sz, blob_tiers_nr, DP_UUID(uuid));
 
 	pool_df->pd_magic	= POOL_DF_MAGIC;
 	if (DAOS_FAIL_CHECK(FLC_POOL_DF_VER))
@@ -391,8 +395,8 @@ end:
 		}
 
 		/* Create SPDK blob on NVMe device */
-		D_DEBUG(DB_MGMT, "Creating tier %d blob of sz "DF_U64" for xs:%p pool:"DF_UUID"\n",
-			tier_id, nvme_sz, xs_ctxt, DP_UUID(uuid));
+		D_DEBUG(DB_MGMT, "Creating tier %d blob of sz "DF_U64" for xs:%p "
+			"pool:"DF_UUID"\n", tier_id, nvme_sz, xs_ctxt, DP_UUID(uuid));
 		rc = bio_blob_create(uuid, xs_ctxt, tier_id, nvme_sz);
 		if (rc != 0) {
 			D_ERROR("Error creating blob for tier %d xs:%p pool:"DF_UUID" "
@@ -425,7 +429,8 @@ end:
 				VOS_BLOB_HDR_BLKS, nvme_sz, vos_blob_format_cb,
 				&blob_hdr, false);
 		if (rc) {
-			D_ERROR("Format blob error for tier %d xs:%p pool:"DF_UUID" "DF_RC"\n",
+			D_ERROR("Format blob error for tier %d xs:%p "
+				"pool:"DF_UUID" "DF_RC"\n",
 				tier_id, xs_ctxt, DP_UUID(uuid), DP_RC(rc));
 			for ( ; tier_id >= 0; tier_id--) {
 				/* Destroy the SPDK blob on error */

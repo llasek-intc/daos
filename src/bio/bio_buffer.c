@@ -482,7 +482,8 @@ dma_map_one(struct bio_desc *biod, struct bio_iov *biov,
 		return 0;
 	}
 
-	D_ASSERT(biov->bi_addr.ba_type == DAOS_MEDIA_NVME);
+	D_ASSERT(biov->bi_addr.ba_type >= DAOS_MEDIA_NVME_TIER0 &&
+		biov->bi_addr.ba_type < DAOS_MEDIA_MAX_NVME);
 	bdb = iod_dma_buf(biod);
 	off = bio_iov2raw_off(biov);
 	end = bio_iov2raw_off(biov) + bio_iov2raw_len(biov);
@@ -1147,13 +1148,13 @@ bio_rw(struct bio_io_context *ioctxt, bio_addr_t addr, d_iov_t *iov,
 
 	rc = bio_rwv(ioctxt, &bsgl, &sgl, update);
 	if (rc)
-		D_ERROR("%s failed for xs:%p, tier %u, rc:%d\n",
+		D_ERROR("%s failed for xs:%p, type %u, rc:%d\n",
 			update ? "Write" : "Read",
-			ioctxt->bic_xs_ctxt, addr.ba_nvme_tier_id, rc);
+			ioctxt->bic_xs_ctxt, addr.ba_type, rc);
 	else
-		D_DEBUG(DB_IO, "%s for xs:%p, tier %u successfully\n",
+		D_DEBUG(DB_IO, "%s for xs:%p, type %u successfully\n",
 			update ? "Write" : "Read",
-			ioctxt->bic_xs_ctxt, addr.ba_nvme_tier_id);
+			ioctxt->bic_xs_ctxt, addr.ba_type);
 
 	return rc;
 }

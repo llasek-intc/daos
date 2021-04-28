@@ -159,7 +159,8 @@ mark_yield(bio_addr_t *addr, unsigned int *acts)
 	 * correctness, we always inform vos_iterate() yield, which may result
 	 * in some unnecessary re-probe.
 	 */
-	if (addr->ba_type == DAOS_MEDIA_NVME)
+	if (addr->ba_type >= DAOS_MEDIA_NVME_TIER0 &&
+		addr->ba_type < DAOS_MEDIA_MAX_NVME)
 		*acts |= VOS_ITER_CB_YIELD;
 }
 
@@ -702,7 +703,7 @@ reserve_segment(struct vos_object *obj, struct agg_io_context *io,
 		return 0;
 	}
 
-	D_ASSERT(media == DAOS_MEDIA_NVME);
+	D_ASSERT(media >= DAOS_MEDIA_NVME_TIER0 && media < DAOS_MEDIA_MAX_NVME);
 	rc = vos_reserve_blocks(obj->obj_cont, &io->ic_nvme_exts, size,
 				VOS_IOS_AGGREGATION, &off);
 	if (rc)
@@ -1064,7 +1065,6 @@ fill_one_segment(daos_handle_t ih, struct agg_merge_window *mw,
 	iov.iov_buf_len = io->ic_buf_len;
 	iov.iov_len = seg_size;
 
-	bio_nvme_tier_set(&addr_dst, 0);	// @todo_llasek: tiering
 	rc = bio_write(bio_ctxt, addr_dst, &iov);
 	if (rc)
 		D_ERROR("Write "DF_RECT" error: "DF_RC"\n",

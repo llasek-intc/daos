@@ -1495,7 +1495,7 @@ bio_xsctxt_alloc(struct bio_xs_context **pctxt, int tgt_id, int tiers_nr)
 	 * spdk_subsystem_init() call, it also could be used for blobstore
 	 * metadata io channel in following init_bio_bdevs() call.
 	 */
-	snprintf(th_name, sizeof(th_name), "daos_spdk_%d_%d", tgt_id, tier_id);
+	snprintf(th_name, sizeof(th_name), "daos_spdk_%d", tgt_id);
 	ctxt->bxc_thread = spdk_thread_create((const char *)th_name, NULL);
 	if (ctxt->bxc_thread == NULL) {
 		D_ERROR("failed to alloc SPDK thread\n");

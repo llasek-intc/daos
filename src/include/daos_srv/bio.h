@@ -15,6 +15,7 @@
 #include <daos/mem.h>
 #include <daos/common.h>
 #include <daos_srv/control.h>
+#include <daos_pool.h>
 #include <abt.h>
 
 typedef struct {
@@ -25,7 +26,6 @@ typedef struct {
 	uint64_t	ba_off;
 	/* DAOS_MEDIA_SCM or DAOS_MEDIA_NVME */
 	uint16_t	ba_type;
-	uint16_t	ba_nvme_tier_id;	// @todo_llasek: tiering POC, may use ba_type
 	/* Is the address a hole ? */
 	uint16_t	ba_hole;
 	uint16_t	ba_dedup;
@@ -101,13 +101,6 @@ bio_addr_set(bio_addr_t *addr, uint16_t type, uint64_t off)
 {
 	addr->ba_type = type;
 	addr->ba_off = umem_off2offset(off);
-}
-
-static inline void
-bio_nvme_tier_set(bio_addr_t *addr, int tier_id)
-{
-	D_ASSERT((tier_id >> 16) == 0);
-	addr->ba_nvme_tier_id = (uint16_t)tier_id;
 }
 
 static inline bool
@@ -190,7 +183,9 @@ bio_iov2raw_buf(const struct bio_iov *biov)
 static inline int
 bio_iov2tier(const struct bio_iov *biov)
 {
-	return biov->bi_addr.ba_nvme_tier_id;
+	D_ASSERT(biov->bi_addr.ba_type >= DAOS_MEDIA_NVME_TIER0 &&
+		biov->bi_addr.ba_type < DAOS_MEDIA_MAX_NVME);
+	return biov->bi_addr.ba_type - DAOS_MEDIA_NVME_TIER0;
 }
 
 static inline void

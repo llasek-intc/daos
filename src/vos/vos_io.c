@@ -1745,7 +1745,7 @@ reserve_space(struct vos_io_context *ioc, uint16_t media, daos_size_t size,
 		return -DER_NOSPACE;
 	}
 
-	D_ASSERT(media == DAOS_MEDIA_NVME);
+	D_ASSERT(media >= DAOS_MEDIA_NVME_TIER0 && media < DAOS_MEDIA_MAX_NVME);
 	rc = vos_reserve_blocks(ioc->ic_cont, &ioc->ic_blk_exts, size,
 				VOS_IOS_GENERIC, off);
 	if (rc)

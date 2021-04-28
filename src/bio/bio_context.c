@@ -758,13 +758,15 @@ bio_write_blob_hdr(struct bio_io_context *ioctxt, struct bio_blob_hdr *bio_bh)
 	struct smd_dev_info	*dev_info;
 	spdk_blob_id		 blob_id;
 	d_iov_t			 iov;
-	bio_addr_t		 addr = { 0 };	// BUGBUG: uninitialized local variable, ba_hole set may trigger an assert after bio_iod_prep() in ctx of bio_rwv().
+	bio_addr_t		 addr = { 0 };
 	uint64_t		 off = 0; /* byte offset in SPDK blob */
-	uint16_t		 dev_type = DAOS_MEDIA_NVME;
+	uint16_t		 dev_type = DAOS_MEDIA_NVME_TIER0 + bio_bh->bbh_tier_id;
 	int			 rc = 0;
 
+	D_ASSERT(dev_type < DAOS_MEDIA_MAX_NVME);
 	D_DEBUG(DB_MGMT, "Writing header blob:%p, xs:%p tier %d\n",
-		ioctxt->bic_tier[bio_bh->bbh_tier_id].bit_blob, ioctxt->bic_xs_ctxt, bio_bh->bbh_tier_id);
+		ioctxt->bic_tier[bio_bh->bbh_tier_id].bit_blob, ioctxt->bic_xs_ctxt,
+		bio_bh->bbh_tier_id);
 
 	/* check that all VOS blob header vars are set */
 	D_ASSERT(uuid_is_null(bio_bh->bbh_pool) == 0);
@@ -772,7 +774,6 @@ bio_write_blob_hdr(struct bio_io_context *ioctxt, struct bio_blob_hdr *bio_bh)
 		return -DER_INVAL;
 
 	bio_addr_set(&addr, dev_type, off);
-	bio_nvme_tier_set(&addr, bio_bh->bbh_tier_id);
 
 	/*
 	 * Set all BIO-related members of blob header.
@@ -780,10 +781,12 @@ bio_write_blob_hdr(struct bio_io_context *ioctxt, struct bio_blob_hdr *bio_bh)
 	bio_bh->bbh_magic = BIO_BLOB_HDR_MAGIC;
 	bio_bh->bbh_vos_id = (uint32_t)ioctxt->bic_xs_ctxt->bxc_tgt_id;
 	/* Query per-server metadata to get blobID for this pool:target */
-	rc = smd_pool_get_blob(bio_bh->bbh_pool, bio_bh->bbh_vos_id, bio_bh->bbh_tier_id, &blob_id);
+	rc = smd_pool_get_blob(bio_bh->bbh_pool, bio_bh->bbh_vos_id,
+		bio_bh->bbh_tier_id, &blob_id);
 	if (rc) {
 		D_ERROR("Failed to find blobID for xs:%p, tier %d pool:"DF_UUID"\n",
-			ioctxt->bic_xs_ctxt, bio_bh->bbh_tier_id, DP_UUID(bio_bh->bbh_pool));
+			ioctxt->bic_xs_ctxt, bio_bh->bbh_tier_id,
+			DP_UUID(bio_bh->bbh_pool));
 		return rc;
 	}
 

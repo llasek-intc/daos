@@ -158,7 +158,8 @@ vos_bio_addr_free(struct vos_pool *pool, bio_addr_t *addr, daos_size_t nob)
 		uint64_t blk_off;
 		uint32_t blk_cnt;
 
-		D_ASSERT(addr->ba_type == DAOS_MEDIA_NVME);
+		D_ASSERT(addr->ba_type >= DAOS_MEDIA_NVME_TIER0 &&
+			addr->ba_type < DAOS_MEDIA_MAX_NVME);
 		blk_off = vos_byte2blkoff(addr->ba_off);
 		blk_cnt = vos_byte2blkcnt(nob);
 

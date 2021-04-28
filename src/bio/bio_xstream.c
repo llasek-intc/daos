@@ -1468,7 +1468,7 @@ bio_xsctxt_alloc(struct bio_xs_context **pctxt, int tgt_id, int tiers_nr)
 	struct bio_xs_context	*ctxt;
 	char			 th_name[32];
 	int			 tier_id;
-	int			 rc;
+	int			 rc = 0;
 
 	/* Skip NVMe context setup if the daos_nvme.conf isn't present */
 	if (nvme_glb.bd_nvme_conf == NULL) {

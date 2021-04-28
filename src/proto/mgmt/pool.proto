@@ -43,7 +43,7 @@ message PoolCreateResp {
 	repeated uint32 tgt_ranks = 3; // pool target ranks
 	uint64 scm_bytes = 4; // total SCM allocated to pool
 	repeated uint64 nvme_bytes = 5; // total NVMe allocated to pool
-	uint32 policy = 6;
+	uint32 policy = 6; //tier placement policy applied for a new pool
 }
 
 // PoolDestroyReq supplies pool identifier and force flag.

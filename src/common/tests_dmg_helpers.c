@@ -411,7 +411,7 @@ dmg_pool_create(const char *dmg_config_file,
 
 	if (nvme_size > 0) {
 		args = cmd_push_arg(args, &argcount,
-				    "--nvme-size=%"PRIu64"b ", nvme_size);
+				    "--nvme-size=%"PRIu64"b,%"PRIu64"b --policy=io_size ", nvme_size, nvme_size);
 		if (args == NULL)
 			D_GOTO(out, rc = -DER_NOMEM);
 	}

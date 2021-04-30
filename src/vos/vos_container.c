@@ -173,7 +173,7 @@ cont_cmp(struct d_ulink *ulink, void *cmp_args)
 static void
 cont_free_internal(struct vos_container *cont)
 {
-	int i;
+	int tier_id, i;
 
 	D_ASSERT(cont->vc_open_count == 0);
 
@@ -193,9 +193,11 @@ cont_free_internal(struct vos_container *cont)
 	if (!d_list_empty(&cont->vc_gc_link))
 		d_list_del(&cont->vc_gc_link);
 
-	for (i = 0; i < VOS_IOS_CNT; i++) {
-		if (cont->vc_hint_ctxt[i])
-			vea_hint_unload(cont->vc_hint_ctxt[i]);
+	for (tier_id = 0; tier_id < cont->vc_pool->vp_nvme_tiers_nr; tier_id++) {
+		for (i = 0; i < VOS_IOS_CNT; i++) {
+			if (cont->vc_hint_ctxt[i][tier_id])
+				vea_hint_unload(cont->vc_hint_ctxt[i][tier_id]);
+		}
 	}
 
 	D_FREE(cont);
@@ -311,6 +313,16 @@ exit:
 	return rc;
 }
 
+static struct vea_hint_df*
+cont_to_hint_df(struct vos_container* cont, int tier_id, enum vos_io_stream ios)
+{
+	D_ASSERT(tier_id >= 0 && tier_id <= DAOS_MEDIA_MAX_NVME);
+	if (tier_id == 0)
+		return &cont->vc_cont_df->cd_tier0_hint_df[ios];
+	else
+		return &cont->vc_cont_df->cd_tier_hint_df[ios][tier_id - 1];
+}
+
 /**
  * Open a container within a VOSP
  */
@@ -318,7 +330,7 @@ int
 vos_cont_open(daos_handle_t poh, uuid_t co_uuid, daos_handle_t *coh)
 {
 
-	int				rc = 0;
+	int				tier_id, rc = 0;
 	struct vos_pool			*pool = NULL;
 	struct d_uuid			ukey;
 	struct d_uuid			pkey;
@@ -419,17 +431,19 @@ vos_cont_open(daos_handle_t poh, uuid_t co_uuid, daos_handle_t *coh)
 		D_GOTO(exit, rc);
 	}
 
-	if (cont->vc_pool->vp_vea_info != NULL) {
-		int	i;
+	for (tier_id = 0; tier_id < cont->vc_pool->vp_nvme_tiers_nr; tier_id++) {
+		if (pool->vp_vea_info[tier_id] != NULL) {
+			int	i;
 
-		for (i = 0; i < VOS_IOS_CNT; i++) {
-			rc = vea_hint_load(&cont->vc_cont_df->cd_hint_df[i],
-					   &cont->vc_hint_ctxt[i]);
-			if (rc) {
-				D_ERROR("Error loading allocator %d hint "
-					DF_UUID": %d\n", i, DP_UUID(co_uuid),
-					rc);
-				goto exit;
+			for (i = 0; i < VOS_IOS_CNT; i++) {
+				rc = vea_hint_load(cont_to_hint_df(cont, tier_id, i),
+						&cont->vc_hint_ctxt[i][tier_id]);
+				if (rc) {
+					D_ERROR("Error loading allocator %d hint "
+						DF_UUID": %d\n", i, DP_UUID(co_uuid),
+						rc);
+					goto exit;
+				}
 			}
 		}
 	}

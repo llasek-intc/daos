@@ -115,7 +115,7 @@ struct dtx_handle {
 	struct dtx_rsrvd_uint		*dth_rsrvds;
 	void				**dth_deferred;
 	/* NVME extents to release */
-	d_list_t			 dth_deferred_nvme;
+	d_list_t			 dth_deferred_nvme[DAOS_MEDIA_MAX_NVME];
 	/* Committed or comittable DTX list */
 	d_list_t			 dth_share_cmt_list;
 	/* Aborted DTX list */

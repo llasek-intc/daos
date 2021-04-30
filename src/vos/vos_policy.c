@@ -20,7 +20,7 @@
 static enum daos_media_type_t
 policy_default(struct vos_pool *pool, daos_iod_type_t type, daos_size_t size)
 {
-	if (pool->vp_vea_info == NULL)
+	if (pool->vp_vea_info[0] == NULL)	// @todo: tiering
 		return DAOS_MEDIA_SCM;
 
 	return (size >= VOS_BLK_SZ) ? DAOS_MEDIA_NVME : DAOS_MEDIA_SCM;
@@ -32,8 +32,8 @@ policy_io_size(struct vos_pool *pool, daos_iod_type_t type, daos_size_t size)
 {
         enum daos_media_type_t medium;
 
-        if (pool->vp_vea_info == NULL)
-                return DAOS_MEDIA_SCM;
+	if (pool->vp_vea_info[0] == NULL)	// @todo: tiering
+		return DAOS_MEDIA_SCM;
 
         if (size >= VOS_POLICY_OPTANE_THRESHOLD)
                 medium = DAOS_MEDIA_NVME;

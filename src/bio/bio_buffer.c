@@ -483,7 +483,7 @@ dma_map_one(struct bio_desc *biod, struct bio_iov *biov,
 	}
 
 	D_ASSERT(biov->bi_addr.ba_type >= DAOS_MEDIA_NVME_TIER0 &&
-		biov->bi_addr.ba_type < DAOS_MEDIA_MAX_NVME);
+		biov->bi_addr.ba_type <= DAOS_MEDIA_MAX_NVME);
 	bdb = iod_dma_buf(biod);
 	off = bio_iov2raw_off(biov);
 	end = bio_iov2raw_off(biov) + bio_iov2raw_len(biov);

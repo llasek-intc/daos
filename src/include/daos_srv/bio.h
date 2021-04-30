@@ -184,7 +184,7 @@ static inline int
 bio_iov2tier(const struct bio_iov *biov)
 {
 	D_ASSERT(biov->bi_addr.ba_type >= DAOS_MEDIA_NVME_TIER0 &&
-		biov->bi_addr.ba_type < DAOS_MEDIA_MAX_NVME);
+		biov->bi_addr.ba_type <= DAOS_MEDIA_MAX_NVME);
 	return biov->bi_addr.ba_type - DAOS_MEDIA_NVME_TIER0;
 }
 
@@ -493,7 +493,8 @@ int bio_ioctxt_close(struct bio_io_context *ctxt);
  *
  * \returns		Zero on success, negative value on error
  */
-int bio_blob_unmap(struct bio_io_context *ctxt, uint64_t off, uint64_t len);
+int bio_blob_unmap(struct bio_io_context *ctxt, int tier_id, uint64_t off,
+	uint64_t len);
 
 /**
  * Write to per VOS instance blob.

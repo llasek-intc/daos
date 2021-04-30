@@ -52,7 +52,7 @@ struct vos_io_context {
 	unsigned int		 ic_umoffs_cnt;
 	unsigned int		 ic_umoffs_at;
 	/** reserved NVMe extents */
-	d_list_t		 ic_blk_exts;
+	d_list_t		 ic_blk_exts[DAOS_MEDIA_MAX_NVME];
 	daos_size_t		 ic_space_held[DAOS_MEDIA_MAX];
 	/** number DAOS IO descriptors */
 	unsigned int		 ic_iod_nr;
@@ -361,12 +361,17 @@ iod_empty_sgl(struct vos_io_context *ioc, unsigned int sgl_at)
 static void
 vos_ioc_reserve_fini(struct vos_io_context *ioc)
 {
+	int	tier_id;
 	if (ioc->ic_rsrvd_scm != NULL) {
 		D_ASSERT(ioc->ic_rsrvd_scm->rs_actv_at == 0);
 		D_FREE(ioc->ic_rsrvd_scm);
 	}
 
-	D_ASSERT(d_list_empty(&ioc->ic_blk_exts));
+	for (tier_id = 0;
+		tier_id <= DAOS_MEDIA_MAX_NVME - DAOS_MEDIA_NVME_TIER0;
+		tier_id++) {
+		D_ASSERT(d_list_empty(&ioc->ic_blk_exts[tier_id]));
+	}
 	D_ASSERT(d_list_empty(&ioc->ic_dedup_entries));
 	if (ioc->ic_umoffs != NULL) {
 		D_FREE(ioc->ic_umoffs);
@@ -455,7 +460,7 @@ vos_ioc_create(daos_handle_t coh, daos_unit_oid_t oid, bool read_only,
 	struct bio_io_context	*bioc;
 	daos_epoch_t		 bound;
 	uint64_t		 cflags = 0;
-	int			 i, rc;
+	int			 tier_id, i, rc;
 
 	if (iod_nr == 0 &&
 	    !(vos_flags &
@@ -494,7 +499,11 @@ vos_ioc_create(daos_handle_t coh, daos_unit_oid_t oid, bool read_only,
 	ioc->iod_csums = iod_csums;
 	vos_ilog_fetch_init(&ioc->ic_dkey_info);
 	vos_ilog_fetch_init(&ioc->ic_akey_info);
-	D_INIT_LIST_HEAD(&ioc->ic_blk_exts);
+	for (tier_id = 0;
+		tier_id <= DAOS_MEDIA_MAX_NVME - DAOS_MEDIA_NVME_TIER0;
+		tier_id++) {
+		D_INIT_LIST_HEAD(&ioc->ic_blk_exts[tier_id]);
+	}
 	ioc->ic_shadows = shadows;
 	D_INIT_LIST_HEAD(&ioc->ic_dedup_entries);
 
@@ -1696,7 +1705,8 @@ vos_reserve_scm(struct vos_container *cont, struct vos_rsrvd_scm *rsrvd_scm,
 
 int
 vos_reserve_blocks(struct vos_container *cont, d_list_t *rsrvd_nvme,
-		   daos_size_t size, enum vos_io_stream ios, uint64_t *off)
+		   daos_size_t size, int tier_id, enum vos_io_stream ios,
+		   uint64_t *off)
 {
 	struct vea_space_info	*vsi;
 	struct vea_hint_context	*hint_ctxt;
@@ -1704,10 +1714,10 @@ vos_reserve_blocks(struct vos_container *cont, d_list_t *rsrvd_nvme,
 	uint32_t		 blk_cnt;
 	int			 rc;
 
-	vsi = vos_cont2pool(cont)->vp_vea_info;
+	vsi = vos_cont2pool(cont)->vp_vea_info[tier_id];
 	D_ASSERT(vsi);
 
-	hint_ctxt = cont->vc_hint_ctxt[ios];
+	hint_ctxt = cont->vc_hint_ctxt[ios][tier_id];
 	D_ASSERT(hint_ctxt);
 
 	blk_cnt = vos_byte2blkcnt(size);
@@ -1729,7 +1739,7 @@ static int
 reserve_space(struct vos_io_context *ioc, uint16_t media, daos_size_t size,
 	      uint64_t *off)
 {
-	int	rc;
+	int	tier_id, rc;
 
 	if (media == DAOS_MEDIA_SCM) {
 		umem_off_t	umoff;
@@ -1745,9 +1755,11 @@ reserve_space(struct vos_io_context *ioc, uint16_t media, daos_size_t size,
 		return -DER_NOSPACE;
 	}
 
-	D_ASSERT(media >= DAOS_MEDIA_NVME_TIER0 && media < DAOS_MEDIA_MAX_NVME);
-	rc = vos_reserve_blocks(ioc->ic_cont, &ioc->ic_blk_exts, size,
-				VOS_IOS_GENERIC, off);
+	D_ASSERT(media >= DAOS_MEDIA_NVME_TIER0 &&
+		media <= DAOS_MEDIA_MAX_NVME);
+	tier_id = media - DAOS_MEDIA_NVME_TIER0;
+	rc = vos_reserve_blocks(ioc->ic_cont, &ioc->ic_blk_exts[tier_id], size,
+				tier_id, VOS_IOS_GENERIC, off);
 	if (rc)
 		D_ERROR("Reserve "DF_U64" from NVMe failed. "DF_RC"\n",
 			size, DP_RC(rc));
@@ -1824,7 +1836,7 @@ vos_reserve_single(struct vos_io_context *ioc, uint16_t media,
 		D_ASSERT(payload_addr >= (char *)irec);
 		off = umoff + (payload_addr - (char *)irec);
 	} else {
-		rc = reserve_space(ioc, DAOS_MEDIA_NVME, size, &off);
+		rc = reserve_space(ioc, media, size, &off);
 		if (rc) {
 			D_ERROR("Reserve NVMe for SV failed. "DF_RC"\n",
 				DP_RC(rc));
@@ -1974,7 +1986,7 @@ vos_publish_scm(struct vos_container *cont, struct vos_rsrvd_scm *rsrvd_scm,
 /* Publish or cancel the NVMe block reservations */
 int
 vos_publish_blocks(struct vos_container *cont, d_list_t *blk_list, bool publish,
-		   enum vos_io_stream ios)
+		   enum vos_io_stream ios, int tier_id)
 {
 	struct vea_space_info	*vsi;
 	struct vea_hint_context	*hint_ctxt;
@@ -1983,9 +1995,11 @@ vos_publish_blocks(struct vos_container *cont, d_list_t *blk_list, bool publish,
 	if (d_list_empty(blk_list))
 		return 0;
 
-	vsi = cont->vc_pool->vp_vea_info;
+	D_ASSERT(tier_id >= 0 &&
+		tier_id <= DAOS_MEDIA_MAX_NVME - DAOS_MEDIA_NVME_TIER0);
+	vsi = cont->vc_pool->vp_vea_info[tier_id];
 	D_ASSERT(vsi);
-	hint_ctxt = cont->vc_hint_ctxt[ios];
+	hint_ctxt = cont->vc_hint_ctxt[ios][tier_id];
 	D_ASSERT(hint_ctxt);
 
 	rc = publish ? vea_tx_publish(vsi, hint_ctxt, blk_list) :
@@ -2105,7 +2119,7 @@ abort:
 	}
 
 	err = vos_tx_end(ioc->ic_cont, dth, &ioc->ic_rsrvd_scm,
-			 &ioc->ic_blk_exts, tx_started, err);
+			 ioc->ic_blk_exts, tx_started, err);
 	if (err == 0) {
 		vos_ts_set_upgrade(ioc->ic_ts_set);
 		if (daes != NULL) {

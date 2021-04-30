@@ -83,8 +83,9 @@ struct vea_unmap_context {
 	 *
 	 * \return                 Zero on success, negative value on error
 	 */
-	int (*vnc_unmap)(uint64_t off, uint64_t cnt, void *data);
+	int (*vnc_unmap)(uint64_t off, uint64_t cnt, void *data, int tier_id);
 	void *vnc_data;
+	int vnc_tier_id;
 };
 
 /* Free space tracking information on SCM */

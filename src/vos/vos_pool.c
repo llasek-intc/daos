@@ -100,6 +100,7 @@ static void
 pool_hop_free(struct d_ulink *hlink)
 {
 	struct vos_pool	*pool = pool_hlink2ptr(hlink);
+	int		 tier_id;
 	int		 rc;
 
 	D_ASSERT(pool->vp_opened == 0);
@@ -117,8 +118,14 @@ pool_hop_free(struct d_ulink *hlink)
 				pool->vp_io_ctxt, DP_UUID(pool->vp_id));
 	}
 
-	if (pool->vp_vea_info != NULL)
-		vea_unload(pool->vp_vea_info);
+	for (tier_id = 0;
+		tier_id <= DAOS_MEDIA_MAX_NVME - DAOS_MEDIA_NVME_TIER0;
+		tier_id++) {
+		if (pool->vp_vea_info[tier_id] == NULL)
+			break;
+
+		vea_unload(pool->vp_vea_info[tier_id]);
+	}
 
 	if (daos_handle_is_valid(pool->vp_cont_th))
 		dbtree_close(pool->vp_cont_th);
@@ -222,17 +229,51 @@ vos_blob_format_cb(void *cb_data, struct umem_instance *umem)
  * Unmap (TRIM) the extent being freed
  */
 static int
-vos_blob_unmap_cb(uint64_t off, uint64_t cnt, void *data)
+vos_blob_unmap_cb(uint64_t off, uint64_t cnt, void *data, int tier_id)
 {
 	struct bio_io_context	*ioctxt = data;
 	int			 rc;
 
 	/* unmap unused pages for NVMe media to perform more efficiently */
-	rc = bio_blob_unmap(ioctxt, off, cnt);
+	rc = bio_blob_unmap(ioctxt, tier_id, off, cnt);
 	if (rc)
 		D_ERROR("Failed to unmap blob\n");
 
 	return rc;
+}
+
+static int
+pool_get_nvme_tiers_nr(struct vos_pool_df *pool_df)
+{
+	int tiers_nr = 1;	// tier 0
+	if (pool_df->pd_nvme_tier0_sz == 0)
+		return 0;
+
+	for (; tiers_nr <= DAOS_MEDIA_MAX_NVME; tiers_nr++) {
+		if (pool_df->pd_nvme_tier_sz[tiers_nr - 1] == 0)
+			break;
+	}
+	return tiers_nr;
+}
+
+static uint64_t
+pool_get_nvme_tier_size(struct vos_pool_df *pool_df, int tier_id)
+{
+	D_ASSERT(tier_id >= 0 && tier_id <= DAOS_MEDIA_MAX_NVME);
+	if (tier_id == 0)
+		return pool_df->pd_nvme_tier0_sz;
+	else
+		return pool_df->pd_nvme_tier_sz[tier_id - 1];
+}
+
+static struct vea_space_df*
+pool_get_nvme_tier_vea_space(struct vos_pool_df *pool_df, int tier_id)
+{
+	D_ASSERT(tier_id >= 0 && tier_id <= DAOS_MEDIA_MAX_NVME);
+	if (tier_id == 0)
+		return &pool_df->pd_vea_tier0_df;
+	else
+		return &pool_df->pd_vea_tier_df[tier_id - 1];
 }
 
 static int pool_open(PMEMobjpool *ph, struct vos_pool_df *pool_df, uuid_t uuid,
@@ -350,7 +391,7 @@ vos_pool_create(const char *path, uuid_t uuid, daos_size_t scm_sz,
 		nvme_sz += blob_tier_sz[0];
 		for (tier_id = 1; tier_id < blob_tiers_nr; tier_id++) {
 			nvme_sz += blob_tier_sz[tier_id];
-			pool_df->pd_nvme_tier_sz[tier_id-1] = blob_tier_sz[tier_id];
+			pool_df->pd_nvme_tier_sz[tier_id - 1] = blob_tier_sz[tier_id];
 		}
 	}
 	D_DEBUG(DB_MGMT, "Pool Path: %s, total size: "DF_U64":"DF_U64" "
@@ -386,13 +427,7 @@ end:
 
 
 	for (tier_id = 0; tier_id < blob_tiers_nr; tier_id++) {
-		if (tier_id == 0) {
-			nvme_sz = pool_df->pd_nvme_tier0_sz;
-		}
-		else
-		{
-			nvme_sz = pool_df->pd_nvme_tier_sz[tier_id-1];
-		}
+		nvme_sz = pool_get_nvme_tier_size(pool_df, tier_id);
 
 		/* Create SPDK blob on NVMe device */
 		D_DEBUG(DB_MGMT, "Creating tier %d blob of sz "DF_U64" for xs:%p "
@@ -406,17 +441,9 @@ end:
 	}
 
 	for (tier_id = 0; tier_id < blob_tiers_nr; tier_id++) {
-		struct vea_space_df *pd_vea_df;
-
-		if (tier_id == 0) {
-			nvme_sz = pool_df->pd_nvme_tier0_sz;
-			pd_vea_df = &pool_df->pd_vea_tier0_df;
-		}
-		else
-		{
-			nvme_sz = pool_df->pd_nvme_tier_sz[tier_id-1];
-			pd_vea_df = &pool_df->pd_vea_tier_df[tier_id-1];
-		}
+		struct vea_space_df *pd_vea_df = pool_get_nvme_tier_vea_space(pool_df,
+			tier_id);
+		nvme_sz = pool_get_nvme_tier_size(pool_df, tier_id);
 
 		/* Format SPDK blob header */
 		blob_hdr.bbh_blk_sz = VOS_BLK_SZ;
@@ -678,6 +705,7 @@ pool_open(PMEMobjpool *ph, struct vos_pool_df *pool_df, uuid_t uuid,
 	struct vos_pool		*pool = NULL;
 	struct umem_attr	*uma;
 	struct d_uuid		 ukey;
+	int			 tiers_nr = 0, tier_id;
 	int			 rc;
 
 	/* Create a new handle during open */
@@ -726,18 +754,33 @@ pool_open(PMEMobjpool *ph, struct vos_pool_df *pool_df, uuid_t uuid,
 
 	if (xs_ctxt != NULL) {
 		struct vea_unmap_context unmap_ctxt;
+		tiers_nr = pool_get_nvme_tiers_nr(pool_df);
+		D_ASSERT(tiers_nr > 0);
 
-		/* set unmap callback fp */
-		unmap_ctxt.vnc_unmap = vos_blob_unmap_cb;
-		unmap_ctxt.vnc_data = pool->vp_io_ctxt;
-		rc = vea_load(&pool->vp_umm, vos_txd_get(), &pool_df->pd_vea_tier0_df,	// @todo_llasek: tiering
-			      &unmap_ctxt, &pool->vp_vea_info);
-		if (rc) {
-			D_ERROR("Failed to load block space info: "DF_RC"\n",
-				DP_RC(rc));
-			goto failed;
+		for (tier_id = 0; tier_id < tiers_nr; tier_id++) {
+			struct vea_space_df *vea_tier_df = pool_get_nvme_tier_vea_space(
+				pool_df, tier_id);
+
+			/* set unmap callback fp */
+			unmap_ctxt.vnc_unmap = vos_blob_unmap_cb;
+			unmap_ctxt.vnc_data = pool->vp_io_ctxt;
+			unmap_ctxt.vnc_tier_id = tier_id;
+			rc = vea_load(&pool->vp_umm, vos_txd_get(), vea_tier_df,
+					&unmap_ctxt, &pool->vp_vea_info[tier_id]);
+			if (rc) {
+				D_ERROR("Failed to load block space info tier %d: "DF_RC"\n",
+					tier_id, DP_RC(rc));
+				tiers_nr = tier_id;	// for cleanup
+				goto failed;
+			}
 		}
 	}
+	for (tier_id = tiers_nr;
+		tier_id <= DAOS_MEDIA_MAX_NVME - DAOS_MEDIA_NVME_TIER0;
+		tier_id++) {
+		pool->vp_vea_info[tier_id] = NULL;
+	}
+	pool->vp_nvme_tiers_nr = tiers_nr;
 
 	rc = vos_dedup_init(pool);
 	if (rc)
@@ -756,12 +799,15 @@ pool_open(PMEMobjpool *ph, struct vos_pool_df *pool_df, uuid_t uuid,
 	pool->vp_excl = !!(flags & VOS_POF_EXCL);
 	pool->vp_small = !!(flags & VOS_POF_SMALL);
 
-	vos_space_sys_init(pool);
+	vos_space_sys_init(pool);	// @todo_llasek: tiering
 	/* Ensure GC is triggered after server restart */
 	gc_add_pool(pool);
 	D_DEBUG(DB_MGMT, "Opened pool %p\n", pool);
 	return 0;
 failed:
+	for (tier_id = 0; tier_id < tiers_nr; tier_id++)
+		vea_unload(pool->vp_vea_info[tier_id]);
+
 	vos_pool_decref(pool); /* -1 for myself */
 	return rc;
 }
@@ -962,12 +1008,12 @@ vos_pool_ctl(daos_handle_t poh, enum vos_pool_opc opc, void* param)
 		memset(&pool->vp_gc_stat, 0, sizeof(pool->vp_gc_stat));
 		break;
 	case VOS_PO_CTL_VEA_PLUG:
-		if (pool->vp_vea_info != NULL)
-			vea_flush(pool->vp_vea_info, true);
+		if (pool->vp_vea_info[0] != NULL)	// @todo_llasek: tiering
+			vea_flush(pool->vp_vea_info[0], true);
 		break;
 	case VOS_PO_CTL_VEA_UNPLUG:
-		if (pool->vp_vea_info != NULL)
-			vea_flush(pool->vp_vea_info, false);
+		if (pool->vp_vea_info[0] != NULL)	// @todo_llasek: tiering
+			vea_flush(pool->vp_vea_info[0], false);
 		break;
 	case VOS_PO_CTL_SET_POLICY:
 		if (param == NULL) {

@@ -98,7 +98,7 @@ struct agg_io_context {
 	/* Reserved SCM extents for new physical entries */
 	struct vos_rsrvd_scm	*ic_rsrvd_scm;
 	/* Reserved NVMe extents for new physical entries */
-	d_list_t		 ic_nvme_exts;
+	d_list_t		 ic_nvme_exts[DAOS_MEDIA_MAX_NVME];
 	void			 (*ic_csum_recalc_func)(void *);
 };
 
@@ -160,7 +160,7 @@ mark_yield(bio_addr_t *addr, unsigned int *acts)
 	 * in some unnecessary re-probe.
 	 */
 	if (addr->ba_type >= DAOS_MEDIA_NVME_TIER0 &&
-		addr->ba_type < DAOS_MEDIA_MAX_NVME)
+		addr->ba_type <= DAOS_MEDIA_MAX_NVME)
 		*acts |= VOS_ITER_CB_YIELD;
 }
 
@@ -315,12 +315,18 @@ enum {
 static int
 merge_window_status(struct agg_merge_window *mw)
 {
+	int		tier_id;
 	struct agg_io_context	*io = &mw->mw_io_ctxt;
 
 	D_ASSERT(io->ic_seg_cnt == 0);
 	D_ASSERT(io->ic_rsrvd_scm == NULL ||
 		 io->ic_rsrvd_scm->rs_actv_at == 0);
-	D_ASSERT(d_list_empty(&io->ic_nvme_exts));
+
+	for (tier_id = 0;
+		tier_id <= DAOS_MEDIA_MAX_NVME - DAOS_MEDIA_NVME_TIER0;
+		tier_id++) {
+		D_ASSERT(d_list_empty(&io->ic_nvme_exts[tier_id]));
+	}
 
 	D_ASSERT(mw->mw_ext.ex_lo <= mw->mw_ext.ex_hi);
 
@@ -687,7 +693,7 @@ reserve_segment(struct vos_object *obj, struct agg_io_context *io,
 {
 	uint64_t	off;
 	uint16_t	media;
-	int		rc;
+	int		tier_id, rc;
 
 	memset(addr, 0, sizeof(*addr));
 	media = vos_policy_media_select(vos_obj2pool(obj), DAOS_IOD_ARRAY, size,
@@ -703,9 +709,10 @@ reserve_segment(struct vos_object *obj, struct agg_io_context *io,
 		return 0;
 	}
 
-	D_ASSERT(media >= DAOS_MEDIA_NVME_TIER0 && media < DAOS_MEDIA_MAX_NVME);
-	rc = vos_reserve_blocks(obj->obj_cont, &io->ic_nvme_exts, size,
-				VOS_IOS_AGGREGATION, &off);
+	D_ASSERT(media >= DAOS_MEDIA_NVME_TIER0 && media <= DAOS_MEDIA_MAX_NVME);
+	tier_id = media - DAOS_MEDIA_NVME_TIER0;
+	rc = vos_reserve_blocks(obj->obj_cont, &io->ic_nvme_exts[tier_id], size,
+				tier_id, VOS_IOS_AGGREGATION, &off);
 	if (rc)
 		D_ERROR("Reserve "DF_U64" from NVMe failed. "DF_RC"\n",
 			size, DP_RC(rc));
@@ -1141,7 +1148,7 @@ insert_segments(daos_handle_t ih, struct agg_merge_window *mw,
 	struct evt_entry_in	*ent_in;
 	struct evt_rect		 rect;
 	unsigned int		 i, leftovers = 0;
-	int			 rc;
+	int			 tier_id, rc;
 
 	D_ASSERT(obj != NULL);
 	rc = umem_tx_begin(vos_obj2umm(obj), NULL);
@@ -1252,11 +1259,15 @@ insert_segments(daos_handle_t ih, struct agg_merge_window *mw,
 	mw->mw_ext.ex_lo = mw->mw_ext.ex_hi = 0;
 
 	/* Publish NVMe reservations */
-	rc = vos_publish_blocks(obj->obj_cont, &io->ic_nvme_exts, true,
-				VOS_IOS_AGGREGATION);
-	if (rc) {
-		D_ERROR("Publish NVMe extents error: "DF_RC"\n", DP_RC(rc));
-		goto abort;
+	for (tier_id = 0;
+		tier_id <= DAOS_MEDIA_MAX_NVME - DAOS_MEDIA_NVME_TIER0;
+		tier_id++) {
+		rc = vos_publish_blocks(obj->obj_cont, &io->ic_nvme_exts[tier_id], true,
+					VOS_IOS_AGGREGATION, tier_id);
+		if (rc) {
+			D_ERROR("Publish NVMe extents error: "DF_RC"\n", DP_RC(rc));
+			goto abort;
+		}
 	}
 abort:
 	if (rc)
@@ -1273,18 +1284,22 @@ cleanup_segments(daos_handle_t ih, struct agg_merge_window *mw, int rc)
 	struct vos_obj_iter	*oiter = vos_hdl2oiter(ih);
 	struct vos_object	*obj = oiter->it_obj;
 	struct agg_io_context	*io = &mw->mw_io_ctxt;
+	int		tier_id;
 
 	D_ASSERT(obj != NULL);
 	if (rc) {
 		vos_publish_scm(obj->obj_cont, io->ic_rsrvd_scm, false);
 
-		if (!d_list_empty(&io->ic_nvme_exts))
-			vos_publish_blocks(obj->obj_cont, &io->ic_nvme_exts,
-					   false, VOS_IOS_AGGREGATION);
+		for (tier_id = 0;
+			tier_id <= DAOS_MEDIA_MAX_NVME - DAOS_MEDIA_NVME_TIER0;
+			tier_id++) {
+			vos_publish_blocks(obj->obj_cont, &io->ic_nvme_exts[tier_id],
+					false, VOS_IOS_AGGREGATION, tier_id);
+			D_ASSERT(d_list_empty(&io->ic_nvme_exts[tier_id]));
+		}
 	}
 
 	/* Reset io context */
-	D_ASSERT(d_list_empty(&io->ic_nvme_exts));
 	D_ASSERT(io->ic_rsrvd_scm == NULL ||
 		 io->ic_rsrvd_scm->rs_actv_at == 0);
 	io->ic_seg_cnt = 0;
@@ -2080,11 +2095,16 @@ aggregate_exit(struct vos_container *cont, bool discard)
 static void
 merge_window_init(struct agg_merge_window *mw, void (*func)(void *))
 {
+	int		tier_id;
 	struct agg_io_context *io = &mw->mw_io_ctxt;
 
 	memset(mw, 0, sizeof(*mw));
 	D_INIT_LIST_HEAD(&mw->mw_phy_ents);
-	D_INIT_LIST_HEAD(&io->ic_nvme_exts);
+	for (tier_id = 0;
+		tier_id <= DAOS_MEDIA_MAX_NVME - DAOS_MEDIA_NVME_TIER0;
+		tier_id++) {
+		D_INIT_LIST_HEAD(&io->ic_nvme_exts[tier_id]);
+	}
 	io->ic_csum_recalc_func = func;
 }
 

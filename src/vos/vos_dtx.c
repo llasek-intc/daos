@@ -2764,9 +2764,14 @@ out:
 int
 vos_dtx_rsrvd_init(struct dtx_handle *dth)
 {
+	int	tier_id;
 	dth->dth_rsrvd_cnt = 0;
 	dth->dth_deferred_cnt = 0;
-	D_INIT_LIST_HEAD(&dth->dth_deferred_nvme);
+	for (tier_id = 0;
+		tier_id <= DAOS_MEDIA_MAX_NVME - DAOS_MEDIA_NVME_TIER0;
+		tier_id++) {
+		D_INIT_LIST_HEAD(&dth->dth_deferred_nvme[tier_id]);
+	}
 
 	if (dth->dth_modification_cnt <= 1) {
 		dth->dth_rsrvds = &dth->dth_rsrvd_inline;
@@ -2789,8 +2794,13 @@ vos_dtx_rsrvd_init(struct dtx_handle *dth)
 void
 vos_dtx_rsrvd_fini(struct dtx_handle *dth)
 {
+	int	tier_id;
 	if (dth->dth_rsrvds != NULL) {
-		D_ASSERT(d_list_empty(&dth->dth_deferred_nvme));
+		for (tier_id = 0;
+			tier_id <= DAOS_MEDIA_MAX_NVME - DAOS_MEDIA_NVME_TIER0;
+			tier_id++) {
+			D_ASSERT(d_list_empty(&dth->dth_deferred_nvme[tier_id]));
+		}
 		D_FREE(dth->dth_deferred);
 		if (dth->dth_rsrvds != &dth->dth_rsrvd_inline)
 			D_FREE(dth->dth_rsrvds);

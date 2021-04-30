@@ -699,7 +699,7 @@ key_iter_fetch_root(struct vos_obj_iter *oiter, vos_iter_type_t type,
 	}
 
 	krec = rbund.rb_krec;
-	info->ii_vea_info = obj->obj_cont->vc_pool->vp_vea_info;
+	info->ii_vea_info = obj->obj_cont->vc_pool->vp_vea_info[0];	// @todo_llasek: tiering. unused?
 	info->ii_uma = vos_obj2uma(obj);
 
 	info->ii_epr = oiter->it_epr;

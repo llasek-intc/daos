@@ -127,9 +127,9 @@ struct vos_pool_df {
 	/** GC bins for container/object/dkey... */
 	struct vos_gc_bin_df			pd_gc_bins[GC_MAX];
 	/** Total space in bytes on NVMe - tier 1+ */
-	uint64_t				pd_nvme_tier_sz[DAOS_MEDIA_MAX_NVME];
+	uint64_t				pd_nvme_tier_sz[DAOS_MEDIA_MAX_NVME - 1];
 	/** Free space tracking for NVMe device - tier 1+ */
-	struct vea_space_df		pd_vea_tier_df[DAOS_MEDIA_MAX_NVME];
+	struct vea_space_df		pd_vea_tier_df[DAOS_MEDIA_MAX_NVME - 1];
 };
 
 /**
@@ -271,9 +271,10 @@ struct vos_cont_df {
 	/** The committed DTXs blob tail. */
 	umem_off_t			cd_dtx_committed_tail;
 	/** Allocation hints for block allocator. */
-	struct vea_hint_df		cd_hint_df[VOS_IOS_CNT];
+	struct vea_hint_df		cd_tier0_hint_df[VOS_IOS_CNT];
 	/** GC bins for object/dkey...Don't need GC_CONT entry */
 	struct vos_gc_bin_df		cd_gc_bins[GC_CONT];
+	struct vea_hint_df		cd_tier_hint_df[VOS_IOS_CNT][DAOS_MEDIA_MAX_NVME-1];
 };
 
 /* Assume cd_dtx_active_tail is just after cd_dtx_active_head. */

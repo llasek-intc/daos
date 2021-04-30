@@ -83,7 +83,7 @@ vos_space_sys_set(struct vos_pool *pool, daos_size_t *space_sys)
 	if (POOL_SCM_SYS(pool) + space_sys[DAOS_MEDIA_SCM] > scm_tot)
 		goto error;
 
-	if (pool->vp_vea_info &&
+	if (pool->vp_vea_info[0] &&	// @todo_llasek: tiering
 	    (POOL_NVME_SYS(pool) + space_sys[DAOS_MEDIA_NVME]) > nvme_tot)
 		goto error;
 
@@ -141,7 +141,7 @@ vos_space_query(struct vos_pool *pool, struct vos_pool_space *vps, bool slow)
 	}
 
 	/* NVMe isn't configured for this VOS pool */
-	if (pool->vp_vea_info == NULL) {
+	if (pool->vp_vea_info[0] == NULL) {
 		NVME_TOTAL(vps) = 0;
 		NVME_FREE(vps) = 0;
 		NVME_SYS(vps) = 0;
@@ -149,7 +149,7 @@ vos_space_query(struct vos_pool *pool, struct vos_pool_space *vps, bool slow)
 	}
 
 	/* Query NVMe free space */
-	rc = vea_query(pool->vp_vea_info, attr, stat);
+	rc = vea_query(pool->vp_vea_info[0], attr, stat);	// @todo_llasek: tiering
 	if (rc) {
 		D_ERROR("Query pool:"DF_UUID" NVMe space failed. "DF_RC"\n",
 			DP_UUID(pool->vp_id), DP_RC(rc));
@@ -308,7 +308,7 @@ vos_space_hold(struct vos_pool *pool, uint64_t flags, daos_key_t *dkey,
 		goto error;
 
 	/* If NVMe isn't configured or this update doesn't use NVMe space */
-	if (pool->vp_vea_info == NULL || space_est[DAOS_MEDIA_NVME] == 0)
+	if (pool->vp_vea_info[0] == NULL || space_est[DAOS_MEDIA_NVME] == 0)
 		goto success;
 
 	nvme_left = NVME_FREE(&vps);
@@ -352,4 +352,5 @@ vos_space_unhold(struct vos_pool *pool, daos_size_t *space_hld)
 
 	POOL_SCM_HELD(pool)	-= space_hld[DAOS_MEDIA_SCM];
 	POOL_NVME_HELD(pool)	-= space_hld[DAOS_MEDIA_NVME];
+	// @todo_llasek: tiering
 }

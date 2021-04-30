@@ -671,13 +671,14 @@ bio_ioctxt_close(struct bio_io_context *ctxt)
 }
 
 int
-bio_blob_unmap(struct bio_io_context *ioctxt, uint64_t off, uint64_t len)
+bio_blob_unmap(struct bio_io_context *ioctxt, int tier_id, uint64_t off,
+	uint64_t len)
 {
 	struct blob_msg_arg	 bma = { 0 };
 	struct blob_cp_arg	*ba = &bma.bma_cp_arg;
 	struct spdk_io_channel	*channel;
 	struct media_error_msg	*mem;
-	struct bio_tier	*tier = &ioctxt->bic_xs_ctxt->bxc_tier[0];	// @todo_llasek: tiering
+	struct bio_tier	*tier = &ioctxt->bic_xs_ctxt->bxc_tier[tier_id];
 	uint64_t		 pg_off;
 	uint64_t		 pg_cnt;
 	int			 rc;
@@ -707,9 +708,9 @@ bio_blob_unmap(struct bio_io_context *ioctxt, uint64_t off, uint64_t len)
 	D_ASSERT(ioctxt->bic_xs_ctxt != NULL);
 	channel = tier->bt_io_channel;
 
-	if (!is_blob_valid(ioctxt, 0)) {	// @todo_llasek: tiering
-		D_ERROR("Blobstore is invalid. blob:%p, closing:%d\n",
-			ioctxt->bic_tier[0].bit_blob, ioctxt->bic_closing);
+	if (!is_blob_valid(ioctxt, tier_id)) {
+		D_ERROR("Blobstore is invalid. blob:%p, tier %d, closing:%d\n",
+			ioctxt->bic_tier[tier_id].bit_blob, tier_id, ioctxt->bic_closing);
 		return -DER_NO_HDL;
 	}
 
@@ -717,12 +718,13 @@ bio_blob_unmap(struct bio_io_context *ioctxt, uint64_t off, uint64_t len)
 	if (rc)
 		return rc;
 
-	D_DEBUG(DB_MGMT, "Unmapping blob %p pgoff:"DF_U64" pgcnt:"DF_U64"\n",
-		ioctxt->bic_tier[0].bit_blob, pg_off, pg_cnt);	// @todo_llasek: tiering
+	D_DEBUG(DB_MGMT, "Unmapping blob %p, tier %d pgoff:"DF_U64" pgcnt:"
+		DF_U64"\n",
+		ioctxt->bic_tier[tier_id].bit_blob, tier_id, pg_off, pg_cnt);
 
 	ioctxt->bic_inflight_dmas++;
 	ba->bca_inflights = 1;
-	spdk_blob_io_unmap(ioctxt->bic_tier[0].bit_blob, channel,	// @todo_llasek: tiering
+	spdk_blob_io_unmap(ioctxt->bic_tier[tier_id].bit_blob, channel,
 			   page2io_unit(ioctxt, pg_off),
 			   page2io_unit(ioctxt, pg_cnt), blob_cb, &bma);
 
@@ -732,8 +734,9 @@ bio_blob_unmap(struct bio_io_context *ioctxt, uint64_t off, uint64_t len)
 	ioctxt->bic_inflight_dmas--;
 
 	if (rc) {
-		D_ERROR("Unmap blob %p failed for xs: %p rc:%d\n",
-			ioctxt->bic_tier[0].bit_blob, ioctxt->bic_xs_ctxt, rc);	// @todo_llasek: tiering
+		D_ERROR("Unmap blob %p failed for xs: %p, tier %d rc:%d\n",
+			ioctxt->bic_tier[tier_id].bit_blob, ioctxt->bic_xs_ctxt, tier_id,
+			rc);
 		D_ALLOC_PTR(mem);
 		if (mem == NULL)
 			goto skip_media_error;
@@ -743,8 +746,8 @@ bio_blob_unmap(struct bio_io_context *ioctxt, uint64_t off, uint64_t len)
 		spdk_thread_send_msg(owner_thread(mem->mem_bs), bio_media_error,
 				     mem);
 	} else
-		D_DEBUG(DB_MGMT, "Successfully unmapped blob %p for xs:%p\n",
-			ioctxt->bic_tier[0].bit_blob, ioctxt->bic_xs_ctxt);	// @todo_llasek: tiering
+		D_DEBUG(DB_MGMT, "Successfully unmapped blob %p for xs:%p, tier %d\n",
+			ioctxt->bic_tier[tier_id].bit_blob, ioctxt->bic_xs_ctxt, tier_id);
 
 skip_media_error:
 	blob_cp_arg_fini(ba);
@@ -763,7 +766,7 @@ bio_write_blob_hdr(struct bio_io_context *ioctxt, struct bio_blob_hdr *bio_bh)
 	uint16_t		 dev_type = DAOS_MEDIA_NVME_TIER0 + bio_bh->bbh_tier_id;
 	int			 rc = 0;
 
-	D_ASSERT(dev_type < DAOS_MEDIA_MAX_NVME);
+	D_ASSERT(dev_type <= DAOS_MEDIA_MAX_NVME);
 	D_DEBUG(DB_MGMT, "Writing header blob:%p, xs:%p tier %d\n",
 		ioctxt->bic_tier[bio_bh->bbh_tier_id].bit_blob, ioctxt->bic_xs_ctxt,
 		bio_bh->bbh_tier_id);

@@ -161,7 +161,7 @@ struct vos_pool {
 	/** I/O context */
 	struct bio_io_context	*vp_io_ctxt;
 	/** In-memory free space tracking for NVMe device */
-	struct vea_space_info	*vp_vea_info;
+	struct vea_space_info	*vp_vea_info[DAOS_MEDIA_MAX_NVME];
 	/** Reserved sys space (for space reclaim, rebuild, etc.) in bytes */
 	daos_size_t		vp_space_sys[DAOS_MEDIA_MAX];	// @todo_llasek: tiering
 	/** Held space by inflight updates. In bytes */
@@ -170,6 +170,7 @@ struct vos_pool {
 	struct d_hash_table	*vp_dedup_hash;
 	/** Tiering policy */
 	enum tier_policy_t		vp_policy;
+	int				vp_nvme_tiers_nr;
 };
 
 /**
@@ -212,7 +213,7 @@ struct vos_container {
 	 * Corresponding in-memory block allocator hints for the
 	 * durable hints in vos_cont_df
 	 */
-	struct vea_hint_context	*vc_hint_ctxt[VOS_IOS_CNT];
+	struct vea_hint_context	*vc_hint_ctxt[VOS_IOS_CNT][DAOS_MEDIA_MAX_NVME];
 	/* Current ongoing aggregation ERR */
 	daos_epoch_range_t	vc_epr_aggregation;
 	/* Current ongoing discard EPR */
@@ -1036,11 +1037,12 @@ vos_publish_scm(struct vos_container *cont, struct vos_rsrvd_scm *rsrvd_scm,
 		bool publish);
 int
 vos_reserve_blocks(struct vos_container *cont, d_list_t *rsrvd_nvme,
-		   daos_size_t size, enum vos_io_stream ios, uint64_t *off);
+		   daos_size_t size, int tier_id, enum vos_io_stream ios,
+		   uint64_t *off);
 
 int
 vos_publish_blocks(struct vos_container *cont, d_list_t *blk_list, bool publish,
-		   enum vos_io_stream ios);
+		   enum vos_io_stream ios, int tier_id);
 
 static inline struct umem_instance *
 vos_pool2umm(struct vos_pool *pool)

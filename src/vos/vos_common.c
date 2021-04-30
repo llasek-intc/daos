@@ -157,13 +157,14 @@ vos_bio_addr_free(struct vos_pool *pool, bio_addr_t *addr, daos_size_t nob)
 	} else {
 		uint64_t blk_off;
 		uint32_t blk_cnt;
+		int tier_id = addr->ba_type - DAOS_MEDIA_NVME_TIER0;
 
 		D_ASSERT(addr->ba_type >= DAOS_MEDIA_NVME_TIER0 &&
-			addr->ba_type < DAOS_MEDIA_MAX_NVME);
+			addr->ba_type <= DAOS_MEDIA_MAX_NVME);
 		blk_off = vos_byte2blkoff(addr->ba_off);
 		blk_cnt = vos_byte2blkcnt(nob);
 
-		rc = vea_free(pool->vp_vea_info, blk_off, blk_cnt);
+		rc = vea_free(pool->vp_vea_info[tier_id], blk_off, blk_cnt);
 		if (rc)
 			D_ERROR("Error on block ["DF_U64", %u] free. "DF_RC"\n",
 				blk_off, blk_cnt, DP_RC(rc));
@@ -178,7 +179,7 @@ vos_tx_publish(struct dtx_handle *dth, bool publish)
 	struct dtx_rsrvd_uint	*dru;
 	struct vos_rsrvd_scm	*scm;
 	int			 rc;
-	int			 i;
+	int			 tier_id, i;
 
 	if (dth->dth_rsrvds == NULL)
 		return 0;
@@ -202,11 +203,15 @@ vos_tx_publish(struct dtx_handle *dth, bool publish)
 		if (rc && publish)
 			return rc;
 
-		/** Function checks if list is empty */
-		rc = vos_publish_blocks(cont, &dru->dru_nvme,
-					publish, VOS_IOS_GENERIC);
-		if (rc && publish)
-			return rc;
+		for (tier_id = 0;
+			tier_id <= DAOS_MEDIA_MAX_NVME - DAOS_MEDIA_NVME_TIER0;
+			tier_id++) {
+			/** Function checks if list is empty */
+			rc = vos_publish_blocks(cont, &dru->dru_nvme[tier_id],
+						publish, VOS_IOS_GENERIC, tier_id);
+			if (rc && publish)
+				return rc;
+		}
 	}
 
 	for (i = 0; i < dth->dth_deferred_cnt; i++) {
@@ -219,9 +224,14 @@ vos_tx_publish(struct dtx_handle *dth, bool publish)
 	}
 
 	/** Handle the deferred NVMe cancellations */
-	if (!publish)
-		vos_publish_blocks(cont, &dth->dth_deferred_nvme,
-				   false, VOS_IOS_GENERIC);
+	if (!publish) {
+		for (tier_id = 0;
+			tier_id <= DAOS_MEDIA_MAX_NVME - DAOS_MEDIA_NVME_TIER0;
+			tier_id++) {
+			vos_publish_blocks(cont, &dth->dth_deferred_nvme[tier_id],
+					false, VOS_IOS_GENERIC, tier_id);
+		}
+	}
 
 	return 0;
 }
@@ -252,7 +262,7 @@ vos_tx_end(struct vos_container *cont, struct dtx_handle *dth_in,
 	struct dtx_handle	*dth = dth_in;
 	struct dtx_rsrvd_uint	*dru;
 	struct dtx_handle	 tmp = {0};
-	int			 rc = err;
+	int			 tier_id, rc = err;
 
 	if (!dtx_is_valid_handle(dth)) {
 		/** Created a dummy dth handle for publishing extents */
@@ -261,7 +271,11 @@ vos_tx_end(struct vos_container *cont, struct dtx_handle *dth_in,
 		tmp.dth_local_tx_started = started ? 1 : 0;
 		tmp.dth_rsrvds = &dth->dth_rsrvd_inline;
 		tmp.dth_coh = vos_cont2hdl(cont);
-		D_INIT_LIST_HEAD(&tmp.dth_deferred_nvme);
+		for (tier_id = 0;
+			tier_id <= DAOS_MEDIA_MAX_NVME - DAOS_MEDIA_NVME_TIER0;
+			tier_id++) {
+			D_INIT_LIST_HEAD(&tmp.dth_deferred_nvme[tier_id]);
+		}
 	}
 
 	if (rsrvd_scmp != NULL) {
@@ -270,8 +284,12 @@ vos_tx_end(struct vos_container *cont, struct dtx_handle *dth_in,
 		dru->dru_scm = *rsrvd_scmp;
 		*rsrvd_scmp = NULL;
 
-		D_INIT_LIST_HEAD(&dru->dru_nvme);
-		d_list_splice_init(nvme_exts, &dru->dru_nvme);
+		for (tier_id = 0;
+			tier_id <= DAOS_MEDIA_MAX_NVME - DAOS_MEDIA_NVME_TIER0;
+			tier_id++) {
+			D_INIT_LIST_HEAD(&dru->dru_nvme[tier_id]);
+			d_list_splice_init(&nvme_exts[tier_id], &dru->dru_nvme[tier_id]);
+		}
 	}
 
 	if (!dth->dth_local_tx_started)

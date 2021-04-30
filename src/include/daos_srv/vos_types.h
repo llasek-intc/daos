@@ -17,7 +17,7 @@
 
 struct dtx_rsrvd_uint {
 	void			*dru_scm;
-	d_list_t		dru_nvme;
+	d_list_t		dru_nvme[DAOS_MEDIA_MAX_NVME];
 };
 
 enum dtx_cos_flags {

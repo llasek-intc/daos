@@ -80,6 +80,7 @@ ut_load(void **state)
 
 	unmap_ctxt.vnc_unmap = NULL;
 	unmap_ctxt.vnc_data = NULL;
+	unmap_ctxt.vnc_tier_id = 0;
 	rc = vea_load(&args->vua_umm, &args->vua_txd, args->vua_md, &unmap_ctxt,
 		      &args->vua_vsi);
 	assert_rc_equal(rc, 0);
@@ -550,6 +551,7 @@ ut_reserve_special(void **state)
 
 	unmap_ctxt.vnc_unmap = NULL;
 	unmap_ctxt.vnc_data = NULL;
+	unmap_ctxt.vnc_tier_id = 0;
 	rc = vea_load(&args.vua_umm, &args.vua_txd, args.vua_md, &unmap_ctxt,
 		      &args.vua_vsi);
 	assert_rc_equal(rc, 0);
@@ -728,6 +730,7 @@ ut_inval_params_reserve(void **state)
 
 	unmap_ctxt.vnc_unmap = NULL;
 	unmap_ctxt.vnc_data = NULL;
+	unmap_ctxt.vnc_tier_id = 0;
 	rc = vea_load(&args.vua_umm, &args.vua_txd, args.vua_md, &unmap_ctxt,
 		      &args.vua_vsi);
 	assert_rc_equal(rc, 0);
@@ -764,6 +767,7 @@ ut_inval_params_cancel(void **state)
 
 	unmap_ctxt.vnc_unmap = NULL;
 	unmap_ctxt.vnc_data = NULL;
+	unmap_ctxt.vnc_tier_id = 0;
 	rc = vea_load(&args.vua_umm, &args.vua_txd, args.vua_md, &unmap_ctxt,
 		      &args.vua_vsi);
 	assert_rc_equal(rc, 0);
@@ -796,6 +800,7 @@ ut_inval_params_tx_publish(void **state)
 
 	unmap_ctxt.vnc_unmap = NULL;
 	unmap_ctxt.vnc_data = NULL;
+	unmap_ctxt.vnc_tier_id = 0;
 	rc = vea_load(&args.vua_umm, &args.vua_txd, args.vua_md, &unmap_ctxt,
 		      &args.vua_vsi);
 	assert_rc_equal(rc, 0);
@@ -838,6 +843,7 @@ ut_inval_params_free(void **state)
 
 	unmap_ctxt.vnc_unmap = NULL;
 	unmap_ctxt.vnc_data = NULL;
+	unmap_ctxt.vnc_tier_id = 0;
 	rc = vea_load(&args.vua_umm, &args.vua_txd, args.vua_md, &unmap_ctxt,
 		      &args.vua_vsi);
 	assert_rc_equal(rc, 0);
@@ -930,6 +936,7 @@ ut_free_invalid_space(void **state)
 
 	unmap_ctxt.vnc_unmap = NULL;
 	unmap_ctxt.vnc_data = NULL;
+	unmap_ctxt.vnc_tier_id = 0;
 	rc = vea_load(&args.vua_umm, &args.vua_txd, args.vua_md, &unmap_ctxt,
 		      &args.vua_vsi);
 	assert_int_equal(rc, 0);
@@ -1000,6 +1007,7 @@ ut_interleaved_ops(void **state)
 
 	unmap_ctxt.vnc_unmap = NULL;
 	unmap_ctxt.vnc_data = NULL;
+	unmap_ctxt.vnc_tier_id = 0;
 	rc = vea_load(&args.vua_umm, &args.vua_txd, args.vua_md, &unmap_ctxt,
 		      &args.vua_vsi);
 	assert_int_equal(rc, 0);
@@ -1154,6 +1162,7 @@ ut_fragmentation(void **state)
 
 	unmap_ctxt.vnc_unmap = NULL;
 	unmap_ctxt.vnc_data = NULL;
+	unmap_ctxt.vnc_tier_id = 0;
 	rc = vea_load(&args.vua_umm, &args.vua_txd, args.vua_md, &unmap_ctxt,
 		      &args.vua_vsi);
 	assert_rc_equal(rc, 0);

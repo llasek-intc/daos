@@ -492,7 +492,8 @@ migrate_end_cb(void *data, bool noop)
 		 * for allocation before unmap done.
 		 */
 		rc = vsi->vsi_unmap_ctxt.vnc_unmap(off, cnt,
-					vsi->vsi_unmap_ctxt.vnc_data);
+					vsi->vsi_unmap_ctxt.vnc_data,
+					vsi->vsi_unmap_ctxt.vnc_tier_id);
 		if (rc)
 			D_ERROR("Unmap ["DF_U64", "DF_U64"] error: %d\n",
 				off, cnt, rc);

@@ -621,7 +621,7 @@ add_region:
 }
 
 static void
-rw_completion(void *cb_arg, int err)
+rw_completion(void *cb_arg, int err, int tier_id)
 {
 	struct bio_xs_context	*xs_ctxt;
 	struct bio_desc		*biod = cb_arg;
@@ -651,7 +651,7 @@ rw_completion(void *cb_arg, int err)
 		if (mem == NULL)
 			goto skip_media_error;
 		mem->mem_err_type = biod->bd_update ? MET_WRITE : MET_READ;
-		mem->mem_bs = xs_ctxt->bxc_tier[0].bt_blobstore;	// @todo_llasek: tiering
+		mem->mem_bs = xs_ctxt->bxc_tier[tier_id].bt_blobstore;
 		mem->mem_tgt_id = xs_ctxt->bxc_tgt_id;
 		spdk_thread_send_msg(owner_thread(mem->mem_bs), bio_media_error,
 				     mem);
@@ -661,6 +661,40 @@ skip_media_error:
 	if (biod->bd_inflights == 0 && biod->bd_dma_issued)
 		ABT_eventual_set(biod->bd_dma_done, NULL, 0);
 }
+
+static void
+rw_completion_tier0(void *cb_arg, int err)
+{
+	rw_completion(cb_arg, err, 0);
+}
+
+static void
+rw_completion_tier1(void *cb_arg, int err)
+{
+	rw_completion(cb_arg, err, 1);
+}
+
+static void
+rw_completion_tier2(void *cb_arg, int err)
+{
+	rw_completion(cb_arg, err, 2);
+}
+
+static void
+rw_completion_tier3(void *cb_arg, int err)
+{
+	rw_completion(cb_arg, err, 3);
+}
+
+static void (*rw_tier_completion[DAOS_MEDIA_MAX_NVME])(void*, int) = {
+	rw_completion_tier0,
+	rw_completion_tier1,
+	rw_completion_tier2,
+	rw_completion_tier3,
+};
+
+D_CASSERT(sizeof(rw_tier_completion)/sizeof(*rw_tier_completion) ==
+	DAOS_MEDIA_MAX_NVME - DAOS_MEDIA_NVME_TIER0 + 1);
 
 static void
 dma_rw(struct bio_desc *biod, bool prep)
@@ -732,12 +766,12 @@ dma_rw(struct bio_desc *biod, bool prep)
 				spdk_blob_io_write(blob, channel, payload,
 					page2io_unit(biod->bd_ctxt, pg_idx),
 					page2io_unit(biod->bd_ctxt, pg_cnt),
-					rw_completion, biod);
+					rw_tier_completion[rg->brr_tier_id], biod);
 			else
 				spdk_blob_io_read(blob, channel, payload,
 					page2io_unit(biod->bd_ctxt, pg_idx),
 					page2io_unit(biod->bd_ctxt, pg_cnt),
-					rw_completion, biod);
+					rw_tier_completion[rg->brr_tier_id], biod);
 			continue;
 		}
 

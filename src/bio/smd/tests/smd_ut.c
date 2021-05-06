@@ -393,14 +393,14 @@ ut_pool(void **state)
 		smd_pool_free_info(pool_info);
 	}
 
-	rc = smd_pool_del_tgt(id1, 5);
+	rc = smd_pool_del_tgt(id1, 5, 0);	// @todo_llasek: tier id
 	assert_rc_equal(rc, -DER_NONEXIST);
 
 	for (i = 0; i < 4; i++) {
-		rc = smd_pool_del_tgt(id1, i);
+		rc = smd_pool_del_tgt(id1, i, 0);	// @todo_llasek: tier id
 		assert_rc_equal(rc, 0);
 
-		rc = smd_pool_del_tgt(id2, i);
+		rc = smd_pool_del_tgt(id2, i, 0);	// @todo_llasek: tier id
 		assert_rc_equal(rc, 0);
 	}
 

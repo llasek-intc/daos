@@ -149,23 +149,25 @@ int smd_dev_replace(uuid_t old_id, uuid_t new_id, d_list_t *pool_list);
  *
  * \param [IN]	pool_id		Pool UUID
  * \param [IN]	tgt_id		Target ID
+ * \param [IN]	tier_id		Tier ID
  * \param [IN]	blob_id		Blob ID
  * \param [IN]	blob_sz		Blob size
  *
  * \return			Zero on success, negative value on error
  */
-int smd_pool_add_tgt(uuid_t pool_id, uint32_t tgt_id, uint32_t tier_id, uint64_t blob_id,
-		     uint64_t blob_sz);
+int smd_pool_add_tgt(uuid_t pool_id, uint32_t tgt_id, uint32_t tier_id,
+			uint64_t blob_id, uint64_t blob_sz);
 
 /**
  * Unassign a VOS pool target
  *
  * \param [IN]	pool_id		Pool UUID
  * \param [IN]	tgt_id		Target ID
+ * \param [IN]	tier_id		Tier ID
  *
  * \return			Zero on success, negative value on error
  */
-int smd_pool_del_tgt(uuid_t pool_id, uint32_t tgt_id);
+int smd_pool_del_tgt(uuid_t pool_id, uint32_t tgt_id, uint32_t tier_id);
 
 /**
  * Get pool info, caller is responsible to free @pool_info

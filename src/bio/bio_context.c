@@ -322,7 +322,7 @@ bio_blob_delete(uuid_t uuid, struct bio_xs_context *xs_ctxt, int tier_id)
 		D_DEBUG(DB_MGMT, "Successfully deleted blobID "DF_U64" for "
 			"pool:"DF_UUID" xs:%p\n", blob_id, DP_UUID(uuid),
 			xs_ctxt);
-		rc = smd_pool_del_tgt(uuid, xs_ctxt->bxc_tgt_id);	// @todo_llasek: tier?
+		rc = smd_pool_del_tgt(uuid, xs_ctxt->bxc_tgt_id, tier->bt_id);
 		if (rc)
 			D_ERROR("Failed to unassign blob:"DF_U64" from pool: "
 				""DF_UUID":%d. %d\n", blob_id, DP_UUID(uuid),
@@ -404,14 +404,14 @@ bio_blob_create(uuid_t uuid, struct bio_xs_context *xs_ctxt, int tier_id, uint64
 			ba->bca_id, xs_ctxt, DP_UUID(uuid), tier->bt_id,
 			bma.bma_opts.num_clusters);
 
-		rc = smd_pool_add_tgt(uuid, xs_ctxt->bxc_tgt_id, tier->bt_id, ba->bca_id,
-				      blob_sz);
+		rc = smd_pool_add_tgt(uuid, xs_ctxt->bxc_tgt_id, tier->bt_id,
+				      ba->bca_id, blob_sz);
 		if (rc != 0) {
 			D_ERROR("Failed to assign pool blob:"DF_U64" to pool: "
 				""DF_UUID":%d, tier %d. %d\n", ba->bca_id, DP_UUID(uuid),
 				xs_ctxt->bxc_tgt_id, tier->bt_id, rc);
 			/* Delete newly created blob */
-			if (bio_blob_delete(uuid, xs_ctxt, tier->bt_id))	// @todo_llasek: tiering
+			if (bio_blob_delete(uuid, xs_ctxt, tier->bt_id))
 				D_ERROR("Unable to delete newly created blobID "
 					""DF_U64" for xs:%p pool:"DF_UUID", tier %d\n",
 					ba->bca_id, xs_ctxt, DP_UUID(uuid), tier->bt_id);

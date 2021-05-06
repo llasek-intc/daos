@@ -96,13 +96,15 @@ out:
 }
 
 int
-smd_pool_del_tgt(uuid_t pool_id, uint32_t tgt_id)
+smd_pool_del_tgt(uuid_t pool_id, uint32_t tgt_id, uint32_t tier_id)
 {
 	struct smd_pool	pool;
 	struct d_uuid	id;
+	uint32_t		smd_tgt_id;
 	int		i;
 	int		rc;
 
+	smd_tgt_id = make_smd_target_id(tgt_id, tier_id);
 	uuid_copy(id.uuid, pool_id);
 
 	smd_db_lock();
@@ -113,10 +115,10 @@ smd_pool_del_tgt(uuid_t pool_id, uint32_t tgt_id)
 		goto out;
 	}
 
-	rc = smd_pool_find_tgt(&pool, tgt_id);
+	rc = smd_pool_find_tgt(&pool, smd_tgt_id);
 	if (rc < 0) {
-		D_ERROR("Pool "DF_UUID" target %d not found.\n",
-			DP_UUID(id.uuid), tgt_id);
+		D_ERROR("Pool "DF_UUID" target %d, tier %d not found.\n",
+			DP_UUID(id.uuid), tgt_id, tier_id);
 		rc = -DER_NONEXIST;
 		goto out;
 	}

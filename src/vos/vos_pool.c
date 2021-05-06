@@ -863,8 +863,10 @@ vos_pool_open(const char *path, uuid_t uuid, unsigned int flags, daos_handle_t *
 	}
 
 	/**
-	 * The object returned will be resized to the current POOL_DF_VERSION - as per libpmemobj:
-	 * If the requested size is larger than the current size, the root object is automatically resized.
+	 * The object returned will be resized to the current POOL_DF_VERSION
+	 * As per libpmemobj:
+	 * If the requested size is larger than the current size, the root object
+	 * is automatically resized.
 	 * In such case, the old data is preserved and the extra space is zeroed.
 	 */
 	pool_df = vos_pool_pop2df(ph);

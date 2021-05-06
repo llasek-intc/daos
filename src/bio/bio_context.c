@@ -212,7 +212,8 @@ static void
 blob_msg_close(void *msg_arg)
 {
 	struct blob_msg_arg	*arg = msg_arg;
-	struct spdk_blob	*blob = arg->bma_ioc->bic_tier[arg->bma_tier_id].bit_blob;
+	struct spdk_blob	*blob =
+		arg->bma_ioc->bic_tier[arg->bma_tier_id].bit_blob;
 
 	spdk_blob_close(blob, blob_close_cb, msg_arg);
 }
@@ -267,7 +268,7 @@ bio_blob_delete(uuid_t uuid, struct bio_xs_context *xs_ctxt, int tier_id)
 	struct blob_msg_arg		 bma = { 0 };
 	struct blob_cp_arg		*ba = &bma.bma_cp_arg;
 	struct bio_blobstore		*bbs;
-	struct bio_tier	*tier = &xs_ctxt->bxc_tier[tier_id];
+	struct bio_tier			*tier = &xs_ctxt->bxc_tier[tier_id];
 	spdk_blob_id			 blob_id;
 	int				 rc;
 
@@ -275,7 +276,7 @@ bio_blob_delete(uuid_t uuid, struct bio_xs_context *xs_ctxt, int tier_id)
 	/**
 	 * Query per-server metadata to get blobID for this pool:target
 	 */
-	rc = smd_pool_get_blob(uuid, xs_ctxt->bxc_tgt_id, tier->bt_id, &blob_id);	// @todo_llasek: tiering
+	rc = smd_pool_get_blob(uuid, xs_ctxt->bxc_tgt_id, tier->bt_id, &blob_id);
 	if (rc != 0) {
 		D_WARN("Blob for xs:%p, pool:"DF_UUID" doesn't exist\n",
 		       xs_ctxt, DP_UUID(uuid));
@@ -335,12 +336,13 @@ bio_blob_delete(uuid_t uuid, struct bio_xs_context *xs_ctxt, int tier_id)
 }
 
 int
-bio_blob_create(uuid_t uuid, struct bio_xs_context *xs_ctxt, int tier_id, uint64_t blob_sz)
+bio_blob_create(uuid_t uuid, struct bio_xs_context *xs_ctxt, int tier_id,
+	uint64_t blob_sz)
 {
 	struct blob_msg_arg		 bma = { 0 };
 	struct blob_cp_arg		*ba = &bma.bma_cp_arg;
 	struct bio_blobstore		*bbs;
-	struct bio_tier	*tier = &xs_ctxt->bxc_tier[tier_id];
+	struct bio_tier			*tier = &xs_ctxt->bxc_tier[tier_id];
 	uint64_t			 cluster_sz;
 	spdk_blob_id			 blob_id;
 	int				 rc;
@@ -446,7 +448,8 @@ bio_blob_open(struct bio_io_context *ctxt, int tier_id, bool async)
 	int				 rc;
 
 	if (ctxt->bic_tier[tier_id].bit_blob != NULL) {
-		D_ERROR("Blob %p, tier %d is already opened\n", ctxt->bic_tier[tier_id].bit_blob, tier_id);
+		D_ERROR("Blob %p, tier %d is already opened\n",
+			ctxt->bic_tier[tier_id].bit_blob, tier_id);
 		return -DER_ALREADY;
 	} else if (ctxt->bic_opening) {
 		D_ERROR("Blob is in opening\n");
@@ -475,7 +478,8 @@ bio_blob_open(struct bio_io_context *ctxt, int tier_id, bool async)
 		return -DER_NOMEM;
 	ba = &bma->bma_cp_arg;
 
-	D_DEBUG(DB_MGMT, "Opening blobID "DF_U64" for xs:%p, tier %d pool:"DF_UUID"\n",
+	D_DEBUG(DB_MGMT,
+		"Opening blobID "DF_U64" for xs:%p, tier %d pool:"DF_UUID"\n",
 		blob_id, xs_ctxt, tier->bt_id, DP_UUID(ctxt->bic_pool_id));
 
 	ctxt->bic_opening = 1;
@@ -497,12 +501,12 @@ bio_blob_open(struct bio_io_context *ctxt, int tier_id, bool async)
 
 	if (rc != 0) {
 		D_ERROR("Open blobID "DF_U64" failed for xs:%p, tier %d pool:"DF_UUID" "
-			"rc:%d\n", blob_id, xs_ctxt, tier->bt_id, DP_UUID(ctxt->bic_pool_id),
-			rc);
+			"rc:%d\n", blob_id, xs_ctxt, tier->bt_id,
+			DP_UUID(ctxt->bic_pool_id), rc);
 	} else {
 		D_ASSERT(ba->bca_blob != NULL);
-		D_DEBUG(DB_MGMT, "Successfully opened blobID "DF_U64" for xs:%p, tier %d"
-			" pool:"DF_UUID" blob:%p\n", blob_id, xs_ctxt, tier->bt_id,
+		D_DEBUG(DB_MGMT, "Successfully opened blobID "DF_U64" for xs:%p, "
+			"tier %d pool:"DF_UUID" blob:%p\n", blob_id, xs_ctxt, tier->bt_id,
 			DP_UUID(ctxt->bic_pool_id), ba->bca_blob);
 		ctxt->bic_tier[tier_id].bit_blob = ba->bca_blob;
 	}
@@ -547,7 +551,8 @@ bio_ioctxt_open(struct bio_io_context **pctxt, struct bio_xs_context *xs_ctxt,
 			bio_bs_unhold(tier->bt_blobstore);
 			goto out;
 		} else {
-			d_list_add_tail(&ctxt->bic_tier[tier_id].bit_link, &tier->bt_io_ctxts);
+			d_list_add_tail(&ctxt->bic_tier[tier_id].bit_link,
+				&tier->bt_io_ctxts);
 		}
 		bio_bs_unhold(tier->bt_blobstore);
 	}
@@ -598,8 +603,8 @@ bio_blob_close(struct bio_io_context *ctxt, int tier_id, bool async)
 	D_ASSERT(ctxt->bic_xs_ctxt != NULL);
 	bbs = tier->bt_blobstore;
 
-	D_DEBUG(DB_MGMT, "Closing blob %p for xs:%p, tier %d\n", ctxt->bic_tier[tier_id].bit_blob,
-		ctxt->bic_xs_ctxt, tier->bt_id);
+	D_DEBUG(DB_MGMT, "Closing blob %p for xs:%p, tier %d\n",
+		ctxt->bic_tier[tier_id].bit_blob, ctxt->bic_xs_ctxt, tier->bt_id);
 
 	ctxt->bic_closing = 1;
 	ba->bca_inflights = 1;
@@ -618,7 +623,8 @@ bio_blob_close(struct bio_io_context *ctxt, int tier_id, bool async)
 
 	if (rc != 0) {
 		D_ERROR("Close blob %p failed for xs:%p, tier %d rc:%d\n",
-			ctxt->bic_tier[tier_id].bit_blob, ctxt->bic_xs_ctxt, tier->bt_id, rc);
+			ctxt->bic_tier[tier_id].bit_blob, ctxt->bic_xs_ctxt, tier->bt_id,
+			rc);
 	} else {
 		D_DEBUG(DB_MGMT, "Successfully closed blob %p for xs:%p, tier %d\n",
 			ctxt->bic_tier[tier_id].bit_blob, ctxt->bic_xs_ctxt, tier->bt_id);

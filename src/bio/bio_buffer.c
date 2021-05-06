@@ -1104,7 +1104,7 @@ bio_rwv(struct bio_io_context *ioctxt, struct bio_sglist *bsgl_in,
 	for (i = 0; i < bsgl->bs_nr; i++) {
 		D_ASSERT(bio_iov2buf(&bsgl_in->bs_iovs[i]) == NULL);
 		D_ASSERT(bio_iov2len(&bsgl_in->bs_iovs[i]) != 0);
-		bsgl->bs_iovs[i] = bsgl_in->bs_iovs[i];	// @todo_llasek: tiering
+		bsgl->bs_iovs[i] = bsgl_in->bs_iovs[i];
 	}
 	bsgl->bs_nr_out = bsgl->bs_nr;
 

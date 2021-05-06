@@ -962,7 +962,8 @@ create_bio_bdev(struct bio_xs_context *ctxt, const char *bdev_name,
 	}
 
 	d_bdev->bb_tier_id = bdev_name_to_tier_id(bdev_name);
-	D_DEBUG(DB_TIER, "bdev "DF_UUID" `%s` is tier %d", DP_UUID(bs_uuid), d_bdev->bb_name, d_bdev->bb_tier_id);
+	D_DEBUG(DB_TIER, "bdev "DF_UUID" `%s` is tier %d",
+		DP_UUID(bs_uuid), d_bdev->bb_name, d_bdev->bb_tier_id);
 
 	uuid_copy(d_bdev->bb_uuid, bs_uuid);
 	/* Verify if any duplicated device ID */
@@ -1059,7 +1060,8 @@ put_bio_blobstore(struct bio_blobstore *bb, struct bio_xs_context *ctxt)
 	struct bio_tier	*tier = &ctxt->bxc_tier[0];	// @todo_llasek: tiering
 	int			i, xs_cnt_max = BIO_XS_CNT_MAX;
 
-	d_list_for_each_entry_safe(ioc, tmp, &tier->bt_io_ctxts, bic_tier[0].bit_link) {	// @todo_llasek: tiering
+	d_list_for_each_entry_safe(ioc, tmp, &tier->bt_io_ctxts,
+		bic_tier[0].bit_link) {	// @todo_llasek: tiering
 		d_list_del_init(&ioc->bic_tier[0].bit_link);	// @todo_llasek: tiering
 		if (ioc->bic_tier[0].bit_blob != NULL)	// @todo_llasek: tiering
 			D_WARN("Pool isn't closed. tgt:%d\n", tier->bt_id);
@@ -1209,14 +1211,16 @@ assign_device(int tgt_id, int tier_id)
 	rc = smd_dev_add_tgt(chosen_bdev->bb_uuid, tgt_id, chosen_bdev->bb_tier_id);
 	if (rc) {
 		D_ERROR("Failed to map dev "DF_UUID" to tgt %d, tier %d. "DF_RC"\n",
-			DP_UUID(chosen_bdev->bb_uuid), tgt_id, chosen_bdev->bb_tier_id, DP_RC(rc));
+			DP_UUID(chosen_bdev->bb_uuid), tgt_id, chosen_bdev->bb_tier_id,
+			DP_RC(rc));
 		return rc;
 	}
 
 	chosen_bdev->bb_tgt_cnt++;
 
-	D_DEBUG(DB_MGMT, "Successfully mapped dev "DF_UUID"/%d to tgt %d, tier %d\n",
-		DP_UUID(chosen_bdev->bb_uuid), chosen_bdev->bb_tgt_cnt, tgt_id, chosen_bdev->bb_tier_id);
+	D_DEBUG(DB_MGMT, "Successfully mapped dev "DF_UUID"/%d to tgt %d tier %d\n",
+		DP_UUID(chosen_bdev->bb_uuid), chosen_bdev->bb_tgt_cnt, tgt_id,
+		chosen_bdev->bb_tier_id);
 
 	return 0;
 }
@@ -1254,8 +1258,8 @@ retry:
 		assigned = true;
 		goto retry;
 	} else if (rc) {
-		D_ERROR("Failed to get dev for tgt %d, tier %d. "DF_RC"\n", tgt_id, tier_id,
-			DP_RC(rc));
+		D_ERROR("Failed to get dev for tgt %d, tier %d. "DF_RC"\n", tgt_id,
+			tier_id, DP_RC(rc));
 		return rc;
 	}
 

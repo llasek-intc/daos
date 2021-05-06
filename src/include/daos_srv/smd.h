@@ -43,6 +43,14 @@ struct smd_pool_info {
 #define TIER_ID_MASK	(0xff)
 #define TIER_ID_SHIFT	(24)
 
+/**
+ * Construct SMD target id
+ * 
+ * \param [IN]	tgt_id	Target id
+ * \param [IN]	tier_id	Tier id
+ * 
+ * \return		SMD target id
+ */
 static inline uint32_t
 make_smd_target_id(uint32_t tgt_id, uint32_t tier_id)
 {
@@ -113,7 +121,8 @@ int smd_dev_get_by_id(uuid_t dev_id, struct smd_dev_info **dev_info);
  *
  * \return			Zero on success, negative value on error
  */
-int smd_dev_get_by_tgt(uint32_t tgt_id, uint32_t tier_id, struct smd_dev_info **dev_info);
+int smd_dev_get_by_tgt(uint32_t tgt_id, uint32_t tier_id,
+	struct smd_dev_info **dev_info);
 
 /**
  * List all NVMe devices, caller is responsible to free list items
@@ -184,11 +193,13 @@ int smd_pool_get_info(uuid_t pool_id, struct smd_pool_info **pool_info);
  *
  * \param [IN]	pool_id		Pool UUID
  * \param [IN]	tgt_id		Target ID
+ * \param [IN]	tier_id		Tier ID
  * \param [OUT]	blob_id		Blob ID
  *
  * \return			Zero on success, negative value on error
  */
-int smd_pool_get_blob(uuid_t pool_id, uint32_t tgt_id, uint32_t tier_id, uint64_t *blob_id);
+int smd_pool_get_blob(uuid_t pool_id, uint32_t tgt_id, uint32_t tier_id,
+	uint64_t *blob_id);
 
 /**
  * Get pool info, caller is responsible to free list items

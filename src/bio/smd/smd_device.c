@@ -39,7 +39,8 @@ smd_dev_add_tgt(uuid_t dev_id, uint32_t tgt_id, uint32_t tier_id)
 	if (rc)
 		return rc;
 	smd_tgt_id = make_smd_target_id(tgt_id, tier_id);
-	D_DEBUG(DB_TIER, "Adding device "DF_UUID" to target %d, tier %d\n", DP_UUID(&dev_id), tgt_id, tier_id);
+	D_DEBUG(DB_TIER, "Adding device "DF_UUID" to target %d, tier %d\n",
+		DP_UUID(&dev_id), tgt_id, tier_id);
 
 	uuid_copy(id.uuid, dev_id);
 	smd_db_lock();
@@ -53,7 +54,8 @@ smd_dev_add_tgt(uuid_t dev_id, uint32_t tgt_id, uint32_t tier_id)
 		rc = -DER_EXIST;
 		goto out;
 	} else if (rc != -DER_NONEXIST) {
-		D_ERROR("Get target %d, tier %d failed. "DF_RC"\n", tgt_id, tier_id, DP_RC(rc));
+		D_ERROR("Get target %d, tier %d failed. "DF_RC"\n",
+			tgt_id, tier_id, DP_RC(rc));
 		goto out;
 	}
 
@@ -91,7 +93,8 @@ smd_dev_add_tgt(uuid_t dev_id, uint32_t tgt_id, uint32_t tier_id)
 		goto out_tx;
 	}
 
-	rc = smd_db_upsert(TABLE_TGT, &smd_tgt_id, sizeof(smd_tgt_id), &id, sizeof(id));
+	rc = smd_db_upsert(TABLE_TGT, &smd_tgt_id, sizeof(smd_tgt_id),
+		&id, sizeof(id));
 	if (rc) {
 		D_ERROR("Update target %d, tier %d failed: "DF_RC"\n",
 			tgt_id, tier_id, DP_RC(rc));
@@ -218,7 +221,8 @@ smd_dev_get_by_id(uuid_t dev_id, struct smd_dev_info **dev_info)
 }
 
 int
-smd_dev_get_by_tgt(uint32_t tgt_id, uint32_t tier_id, struct smd_dev_info **dev_info)
+smd_dev_get_by_tgt(uint32_t tgt_id, uint32_t tier_id,
+	struct smd_dev_info **dev_info)
 {
 	struct d_uuid	id;
 	int		rc;
@@ -230,7 +234,8 @@ smd_dev_get_by_tgt(uint32_t tgt_id, uint32_t tier_id, struct smd_dev_info **dev_
 	smd_tgt_id = make_smd_target_id(tgt_id, tier_id);
 
 	smd_db_lock();
-	rc = smd_db_fetch(TABLE_TGT, &smd_tgt_id, sizeof(smd_tgt_id), &id, sizeof(id));
+	rc = smd_db_fetch(TABLE_TGT, &smd_tgt_id, sizeof(smd_tgt_id),
+		&id, sizeof(id));
 	if (rc) {
 		D_CDEBUG(rc != -DER_NONEXIST, DLOG_ERR, DB_MGMT,
 			 "Fetch target %d, tier %d failed. "DF_RC"\n", tgt_id, tier_id,

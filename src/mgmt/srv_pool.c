@@ -84,7 +84,8 @@ ds_mgmt_tgt_pool_destroy(uuid_t pool_uuid, d_rank_list_t *ranks)
 static int
 ds_mgmt_tgt_pool_create_ranks(uuid_t pool_uuid, char *tgt_dev,
 			      d_rank_list_t *rank_list, size_t scm_size,
-			      size_t nvme_tiers_nr, size_t *nvme_tier_size, uuid_t **tgt_uuids)
+			      size_t nvme_tiers_nr, size_t *nvme_tier_size,
+				  uuid_t **tgt_uuids)
 {
 	crt_rpc_t			*tc_req;
 	crt_opcode_t			opc;
@@ -207,9 +208,9 @@ ds_mgmt_pool_svc_create(uuid_t pool_uuid,
 
 int
 ds_mgmt_create_pool(uuid_t pool_uuid, const char *group, char *tgt_dev,
-		    d_rank_list_t *targets, size_t scm_size, size_t nvme_tiers_nr, size_t *nvme_tier_size,
-		    daos_prop_t *prop, uint32_t svc_nr, d_rank_list_t **svcp,
-		    int domains_nr, uint32_t *domains)
+		    d_rank_list_t *targets, size_t scm_size, size_t nvme_tiers_nr,
+			size_t *nvme_tier_size, daos_prop_t *prop, uint32_t svc_nr,
+			d_rank_list_t **svcp, int domains_nr, uint32_t *domains)
 {
 	uuid_t				*tgt_uuids = NULL;
 	d_rank_list_t			*filtered_targets = NULL;

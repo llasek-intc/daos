@@ -29,8 +29,8 @@ smd_pool_find_tgt(struct smd_pool *pool, int tgt_id)
 }
 
 int
-smd_pool_add_tgt(uuid_t pool_id, uint32_t tgt_id, uint32_t tier_id, uint64_t blob_id,
-		 uint64_t blob_sz)
+smd_pool_add_tgt(uuid_t pool_id, uint32_t tgt_id, uint32_t tier_id,
+		uint64_t blob_id, uint64_t blob_sz)
 {
 	struct smd_pool	pool;
 	struct d_uuid	id;
@@ -211,7 +211,8 @@ out:
 }
 
 int
-smd_pool_get_blob(uuid_t pool_id, uint32_t tgt_id, uint32_t tier_id, uint64_t *blob_id)
+smd_pool_get_blob(uuid_t pool_id, uint32_t tgt_id, uint32_t tier_id,
+	uint64_t *blob_id)
 {
 	struct smd_pool	pool;
 	struct d_uuid	id;

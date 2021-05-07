@@ -1053,18 +1053,20 @@ init_bio_bdevs(struct bio_xs_context *ctxt)
 }
 
 static void
-put_bio_blobstore(struct bio_blobstore *bb, struct bio_xs_context *ctxt)
+put_bio_blobstore(struct bio_tier *tier, struct bio_xs_context *ctxt)
 {
+	struct bio_blobstore	*bb = tier->bt_blobstore;
 	struct spdk_blob_store	*bs = NULL;
 	struct bio_io_context	*ioc, *tmp;
-	struct bio_tier	*tier = &ctxt->bxc_tier[0];	// @todo_llasek: tiering
+	int			tier_id = tier->bt_id;
 	int			i, xs_cnt_max = BIO_XS_CNT_MAX;
 
 	d_list_for_each_entry_safe(ioc, tmp, &tier->bt_io_ctxts,
-		bic_tier[0].bit_link) {	// @todo_llasek: tiering
-		d_list_del_init(&ioc->bic_tier[0].bit_link);	// @todo_llasek: tiering
-		if (ioc->bic_tier[0].bit_blob != NULL)	// @todo_llasek: tiering
-			D_WARN("Pool isn't closed. tgt:%d\n", tier->bt_id);
+		bic_tier[tier_id].bit_link) {
+		d_list_del_init(&ioc->bic_tier[tier_id].bit_link);
+		if (ioc->bic_tier[tier_id].bit_blob != NULL)
+			D_WARN("Pool isn't closed. tgt:%d, tier %d\n",
+				ctxt->bxc_tgt_id, tier->bt_id);
 	}
 
 	ABT_mutex_lock(bb->bb_mutex);
@@ -1392,7 +1394,7 @@ bio_xsctxt_free(struct bio_xs_context *ctxt)
 		}
 
 		if (tier->bt_blobstore != NULL) {
-			put_bio_blobstore(tier->bt_blobstore, ctxt);
+			put_bio_blobstore(tier, ctxt);
 
 			if (is_bbs_owner(ctxt, tier->bt_blobstore))
 				bio_fini_health_monitoring(tier->bt_blobstore);

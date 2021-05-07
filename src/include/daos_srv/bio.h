@@ -426,6 +426,13 @@ int bio_xsctxt_alloc(struct bio_xs_context **pctxt, int tgt_id, int tiers_nr);
  */
 void bio_xsctxt_free(struct bio_xs_context *ctxt);
 
+/**
+ * Returns the number of NVMe tiers.
+ * 
+ * \param[IN] ctxt	Per-xstream NVMe context
+ * 
+ * \returns		Number of NVMe tiers
+ */
 int bio_xsctx_tiers(struct bio_xs_context *ctxt);
 
 /**

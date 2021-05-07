@@ -533,13 +533,16 @@ vos_pool_kill(uuid_t uuid, bool force)
 
 	/* NVMe device is configured */
 	if (xs_ctxt) {
-		D_DEBUG(DB_MGMT, "Deleting blob for xs:%p pool:"DF_UUID"\n",
-			xs_ctxt, DP_UUID(uuid));
-		rc = bio_blob_delete(uuid, xs_ctxt, 0);	// @todo_llasek: tiering
-		if (rc) {
-			D_ERROR("Destroy blob for pool="DF_UUID" rc=%s\n",
-				DP_UUID(uuid), d_errstr(rc));
-			/* do not return the error, nothing we can do */
+		int tier_id, tiers_nr = bio_xsctx_tiers(xs_ctxt);
+		for (tier_id = 0; tier_id < tiers_nr; tier_id++) {
+			D_DEBUG(DB_MGMT, "Deleting blob for xs:%p pool:"DF_UUID" tier %d\n",
+				xs_ctxt, DP_UUID(uuid), tier_id);
+			rc = bio_blob_delete(uuid, xs_ctxt, tier_id);
+			if (rc) {
+				D_ERROR("Destroy blob for pool="DF_UUID" tier %d rc=%s\n",
+					DP_UUID(uuid), tier_id, d_errstr(rc));
+				/* do not return the error, nothing we can do */
+			}
 		}
 	}
 	return 0;
